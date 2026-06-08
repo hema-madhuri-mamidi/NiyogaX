@@ -120,10 +120,15 @@
 // }
 
 // export default App
+import { JobFilterProvider } from './hooks/useJobFilter';
 import NiyogaX from "./NiyogaX_v2";
 
 function App() {
-  return <NiyogaX />;
+  return (
+    <JobFilterProvider>
+      <NiyogaX />
+    </JobFilterProvider>
+  );
 }
 
 export default App;
