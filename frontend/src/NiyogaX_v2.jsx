@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import NiyoAssistant from './components/NiyoAssistant';
+import { JobFilterProvider, useJobFilter } from './hooks/useJobFilter.jsx';
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700;800;900&family=Noto+Sans+Telugu:wght@400;600;700&display=swap');
@@ -120,7 +122,14 @@ function speak(text, lang = "te-IN") {
   _ensureVoices(_doSpeak);
 }
 
-function speakLater(text, ms = 400) { setTimeout(() => speak(text), ms); }
+function speakLater(text, ms = 400) {
+  const id = setTimeout(() => speak(text), ms);
+  return () => clearTimeout(id);
+}
+
+function stopSpeech() {
+  try { window.speechSynthesis?.cancel(); } catch (e) { /* ignore */ }
+}
 
 /* ── TRANSLATIONS (te = Telugu, en = English, va = Telugu+Voice) ── */
 const T = {
@@ -183,8 +192,25 @@ const T = {
     cpName: "👤 పేరు", cpLoc: "📍 స్థానం", cpTrust: "⭐ Trust", cpVerified: "✅ Verified", cpVerifiedVal: "పూర్తయింది",
     // Completion
     cDoneSpeak: "అభినందనలు! NiyogaX కి స్వాగతం!",
+    // Worker nav / home / profile
+    wHomeWelcome: "స్వాగతం!",
+    wHomeBtn: "పనులు చూడండి →",
+    wProfileLoc: "📍 స్థానం",
+    wProfileRating: "⭐ రేటింగ్",
+    wProfileVerified: "✅ ధృవీకరణ",
+    wProfileDaily: "💰 రోజు కూలి",
+    wProfileGender: "🧬 లింగం",
+    wProfileNoContact: "అత్యవసర సంప్రదింపు జోడించబడలేదు",
+    wProfileUrgentHint: "⚠️ అత్యవసర పరిస్థితుల్లో ఈ నంబర్ కి notification పంపబడుతుంది.",
+    wProfileEmergencyLabel: "అత్యవసర సంప్రదింపు",
+    wProfileAddContact: "➕ సంప్రదింపు జోడించు",
+    wProfileSkipContact: "దాటవేయి →",
+    wProfileDone: "పూర్తి చేయండి ✓",
+    wNavHome: "హోమ్",
+    wNavJobs: "పనులు",
+    wNavProfile: "ప్రొఫైల్",
     // Reset
-    resetSpeak: "మళ్ళీ స్వాగతం!",
+    resetSpeak: "మళ్లీ స్వాగతం!",
     // Logout
     logout: "లాగ్ అవుట్",
   },
@@ -234,6 +260,19 @@ const T = {
     cHomeBtn: "Dashboard →", cHomeWelcome: (n) => `Welcome, ${n}!`,
     cpName: "👤 Name", cpLoc: "📍 Location", cpTrust: "⭐ Trust", cpVerified: "✅ Verified", cpVerifiedVal: "Complete",
     cDoneSpeak: "", resetSpeak: "", logout: "Log Out",
+    wHomeWelcome: "Welcome!",
+    wHomeBtn: "View Jobs →",
+    wProfileLoc: "📍 Location",
+    wProfileRating: "⭐ Rating",
+    wProfileVerified: "✅ Verified",
+    wProfileDaily: "💰 Daily wage",
+    wProfileGender: "🧬 Gender",
+    wProfileNoContact: "No emergency contact added",
+    wProfileUrgentHint: "⚠️ This number will be notified if you press SOS.",
+    wProfileEmergencyLabel: "Emergency Contact",
+    wProfileAddContact: "➕ Add contact",
+    wProfileSkipContact: "Skip →",
+    wProfileDone: "Complete ✓",
   },
 };
 T.va = T.te; // Voice Assisted uses same Telugu text
@@ -392,7 +431,7 @@ function sosDispatch(contact, locationStr) {
   return Promise.resolve({ status: "simulated", channel: "ui-only" });
 }
 
-function SOS({ workerProfile }) {
+function SOS({ workerProfile, style }) {
   const [modal, setModal]     = useState(false);   // show modal
   const [stage, setStage]     = useState("idle");  // idle | confirming | sending | sent
   const [location, setLocation] = useState("");
@@ -427,7 +466,7 @@ function SOS({ workerProfile }) {
       {/* SOS trigger button — unchanged position/style */}
       <button
         onClick={openSOS}
-        style={{ position: "fixed", bottom: 90, right: 20, zIndex: 1000, width: 56, height: 56, borderRadius: "50%", border: "3px solid #ff3c00", background: modal ? "#ff3c00" : "rgba(255,60,0,.15)", color: modal ? "#fff" : "#ff3c00", fontWeight: 900, fontSize: 13, cursor: "pointer", boxShadow: "0 0 20px rgba(255,60,0,.5)", animation: modal ? "pulse .5s infinite" : "none", transition: "all .3s", backdropFilter: "blur(10px)" }}>
+        style={{ position: "fixed", bottom: 90, right: 20, zIndex: 1000, width: 56, height: 56, borderRadius: "50%", border: "3px solid #ff3c00", background: modal ? "#ff3c00" : "rgba(255,60,0,.15)", color: modal ? "#fff" : "#ff3c00", fontWeight: 900, fontSize: 13, cursor: "pointer", boxShadow: "0 0 20px rgba(255,60,0,.5)", animation: modal ? "pulse .5s infinite" : "none", transition: "all .3s", backdropFilter: "blur(10px)", ...style }}>
         SOS
       </button>
 
@@ -544,7 +583,7 @@ function SOS({ workerProfile }) {
 }
 
 /* ── FLOATING ASSISTANT ── */
-function Bot({ onCmd }) {
+function Bot({ onCmd, onOpenChange, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [rep, setRep] = useState("");
   const handle = t => {
@@ -555,14 +594,14 @@ function Bot({ onCmd }) {
     setRep(r); speak(r);
   };
   return <>
-    <button onClick={() => setOpen(!open)} style={{ position: "fixed", bottom: 155, right: 20, zIndex: 1000, width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#1a6b3c,#22c55e)", boxShadow: "0 4px 24px rgba(34,197,94,.5)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", animation: "breathe 3s ease-in-out infinite", fontSize: 24 }}>🤖</button>
-    {open && <div style={{ position: "fixed", bottom: 220, right: 20, zIndex: 1000, background: "rgba(10,20,40,.95)", border: "1px solid rgba(34,197,94,.4)", borderRadius: 20, padding: "18px 20px", width: 260, backdropFilter: "blur(20px)", boxShadow: "0 8px 40px rgba(0,0,0,.6)" }}>
-      <div style={{ color: "#22c55e", fontWeight: 700, fontSize: 13, marginBottom: 8, fontFamily: "'Noto Sans Telugu',sans-serif" }}>🤖 NiyogaX సహాయకుడు</div>
-      <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 14, fontFamily: "'Noto Sans Telugu',sans-serif" }}>"worker" లేదా "contractor" అని చెప్పండి</div>
-      <Mic onResult={handle} size={48} />
-      {rep && <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(34,197,94,.1)", borderRadius: 10, color: "#86efac", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{rep}</div>}
-      <button onClick={() => setOpen(false)} style={{ position: "absolute", top: 8, right: 12, background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16 }}>✕</button>
-    </div>}
+    <button onClick={() => { const next = !open; setOpen(next); onOpenChange?.(next); }} style={{ position: "fixed", bottom: 155, right: 20, zIndex: 1000, width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#1a6b3c,#22c55e)", boxShadow: "0 4px 24px rgba(34,197,94,.5)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", animation: "breathe 3s ease-in-out infinite", fontSize: 24 }}>🤖</button>
+    {open && (
+      <NiyoAssistant
+        isOpen={open}
+        onClose={() => { setOpen(false); onOpenChange?.(false); }}
+        onNavigate={onNavigate}
+      />
+    )}
   </>;
 }
 
@@ -578,7 +617,11 @@ function Back({ onClick }) {
 /* ── NAV BAR ── */
 function Nav({ page, go, role, langMode = "te" }) {
   const tx = T[langMode] || T.te;
-  const wn = [{ id: "home", icon: "🏠", l: "హోమ్" }, { id: "jobs", icon: "🔍", l: "పనులు" }, { id: "profile", icon: "👤", l: "ప్రొఫైల్" }];
+  const wn = [
+    { id: "home", icon: "🏠", l: tx.wNavHome || "హోమ్" },
+    { id: "jobs", icon: "🔍", l: tx.wNavJobs || "పనులు" },
+    { id: "profile", icon: "👤", l: tx.wNavProfile || "ప్రొఫైల్" },
+  ];
   const cn = [
     { id: "home",      icon: "🏠", l: tx.navHome },
     { id: "dashboard", icon: "📊", l: tx.navDash },
@@ -730,32 +773,50 @@ function RoleSelect({ onSelect, onBack }) {
 }
 
 /* ── WORKER REGISTRATION ── */
-function WorkerReg({ onDone, onBack }) {
+function WorkerReg({ langMode = "te", onDone, onBack }) {
+  const tx = T[langMode] || T.te;
+  const va = langMode === "va";
+  const isEn = langMode === "en";
   const [step, setStep] = useState(0);
   const [method, setMethod] = useState(null);
   const [phone, setPhone] = useState(""); const [otp, setOtp] = useState(""); const [sent, setSent] = useState(false);
   const { t, show } = useToast();
-  useEffect(() => { speakLater("మీరు ఎలా నమోదు చేసుకోవాలనుకుంటున్నారు? ముఖం ద్వారా, voice ద్వారా, లేక phone number ద్వారా?", 300); }, []);
+  useEffect(() => {
+    if (!va) return;
+    const cancel = speakLater("మీరు ఎలా నమోదు చేసుకోవాలనుకుంటున్నారు? ముఖం ద్వారా, voice ద్వారా, లేక phone number ద్వారా?", 300);
+    return cancel;
+  }, []);
   const vr = tx => {
     const l = tx.toLowerCase();
-    if (l.includes("ముఖం") || l.includes("face")) { show("✓ ముఖం ద్వారా", "#ff8c00"); speak("ముఖం ద్వారా నమోదు"); setTimeout(() => { setMethod("face"); setStep(1); }, 800); }
-    else if (l.includes("voice") || l.includes("వాయిస్")) { show("✓ వాయిస్ ద్వారా", "#ff8c00"); speak("వాయిస్ ద్వారా నమోదు"); setTimeout(() => { setMethod("voice"); setStep(1); }, 800); }
-    else if (l.includes("phone") || l.includes("ఫోన్") || l.includes("number")) { show("✓ ఫోన్ ద్వారా", "#ff8c00"); speak("ఫోన్ ద్వారా నమోదు"); setTimeout(() => { setMethod("phone"); setStep(1); }, 800); }
-    else speak("మళ్ళీ చెప్పండి — face, voice లేదా phone?");
+    if (l.includes("ముఖం") || l.includes("face")) {
+      show("✓ " + (isEn ? "Face" : "ముఖం ద్వారా"), "#ff8c00");
+      if (va) speak("ముఖం ద్వారా నమోదు");
+      setTimeout(() => { setMethod("face"); setStep(1); }, 800);
+    } else if (l.includes("voice") || l.includes("వాయిస్")) {
+      show("✓ " + (isEn ? "Voice" : "వాయిస్ ద్వారా"), "#ff8c00");
+      if (va) speak("వాయిస్ ద్వారా నమోదు");
+      setTimeout(() => { setMethod("voice"); setStep(1); }, 800);
+    } else if (l.includes("phone") || l.includes("ఫోన్") || l.includes("number")) {
+      show("✓ " + (isEn ? "Phone" : "ఫోన్ ద్వారా"), "#ff8c00");
+      if (va) speak("ఫోన్ ద్వారా నమోదు");
+      setTimeout(() => { setMethod("phone"); setStep(1); }, 800);
+    } else if (va) {
+      speak("మళ్ళీ చెప్పండి — face, voice లేదా phone?");
+    }
   };
   if (step === 0) return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
     <Toast {...t} /><Back onClick={onBack} />
     <div style={{ textAlign: "center", marginBottom: 44 }}>
       <div style={{ color: "#ff8c00", fontSize: 12, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", marginBottom: 12, fontFamily: "'Rajdhani',sans-serif" }}>Step 2 of 3</div>
-      <h1 style={{ color: "#f1f5f9", fontSize: "clamp(20px,5vw,36px)", fontWeight: 800, fontFamily: "'Rajdhani',sans-serif", margin: 0 }}>నమోదు చేసుకోండి</h1>
+      <h1 style={{ color: "#f1f5f9", fontSize: "clamp(20px,5vw,36px)", fontWeight: 800, fontFamily: "'Rajdhani',sans-serif", margin: 0 }}>{isEn ? "Register" : "నమోదు చేసుకోండి"}</h1>
       <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
         <Mic onResult={vr} size={50} />
-        <span style={{ color: "#47556980", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>🎤 "Face", "Voice" లేదా "Phone" అని చెప్పండి</span>
+        <span style={{ color: "#47556980", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{isEn ? '🎤 Say "Face", "Voice" or "Phone"' : '🎤 "Face", "Voice" లేదా "Phone" అని చెప్పండి'}</span>
       </div>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 18, maxWidth: 590, width: "100%" }}>
-      {[{ id: "face", icon: "🤳", title: "ముఖం ద్వారా", sub: "Face ID" }, { id: "voice", icon: "🎤", title: "వాయిస్ ద్వారా", sub: "Voice" }, { id: "phone", icon: "📱", title: "ఫోన్ ద్వారా", sub: "Phone OTP" }].map(m =>
-        <button key={m.id} onClick={() => { setMethod(m.id); setStep(1); speak(m.title + " ఎంచుకున్నారు"); }}
+      {[{ id: "face", icon: "🤳", title: isEn ? "Face" : "ముఖం ద్వారా", sub: isEn ? "Face ID" : "Face ID" }, { id: "voice", icon: "🎤", title: isEn ? "Voice" : "వాయిస్ ద్వారా", sub: isEn ? "Voice" : "Voice" }, { id: "phone", icon: "📱", title: isEn ? "Phone" : "ఫోన్ ద్వారా", sub: isEn ? "Phone OTP" : "Phone OTP" }].map(m =>
+        <button key={m.id} onClick={() => { setMethod(m.id); setStep(1); if (va) speak(m.title + " ఎంచుకున్నారు"); }}
           style={{ background: "rgba(255,255,255,.05)", border: "2px solid rgba(255,140,0,.3)", borderRadius: 20, padding: "28px 18px", cursor: "pointer", textAlign: "center", transition: "all .3s", backdropFilter: "blur(12px)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "#ff8c00"; e.currentTarget.style.transform = "scale(1.04)"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,140,0,.3)"; e.currentTarget.style.transform = "none"; }}>
@@ -772,22 +833,22 @@ function WorkerReg({ onDone, onBack }) {
       <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 7 }}>కెమెరా వైపు చూడండి</div>
       <div style={{ position: "absolute", left: 0, right: 0, height: 3, background: "linear-gradient(90deg,transparent,#ff8c00,transparent)", animation: "scanLine 2s linear infinite", top: 0 }} />
     </div>
-    <Btn onClick={() => { speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 600); }}>ముఖం నమోదు అయింది ✓</Btn>
+    <Btn onClick={() => { if (va) speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 600); }}>ముఖం నమోదు అయింది ✓</Btn>
   </Card>;
   if (method === "voice") return <Card title="వాయిస్ ద్వారా నమోదు" sub="Voice Registration" onBack={() => setStep(0)}>
     <div style={{ textAlign: "center" }}>
       <div style={{ color: "#94a3b8", fontSize: 14, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18 }}>మీ పేరు చెప్పండి</div>
-      <Mic onResult={tx => { speak("మీ వాయిస్ నమోదు అయింది. మీ నమోదు పూర్తైంది!"); setTimeout(onDone, 1600); }} size={68} />
+      <Mic onResult={tx => { if (va) speak("మీ వాయిస్ నమోదు అయింది. మీ నమోదు పూర్తైంది!"); setTimeout(onDone, 1600); }} size={68} />
     </div>
   </Card>;
   return <Card title="ఫోన్ నమోదు" sub="Phone OTP" onBack={() => setStep(0)}>
     {!sent ? <>
       <Field label="ఫోన్ నంబర్" sub="Phone" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" />
-      <Btn onClick={() => { setSent(true); speak("OTP పంపబడింది. దయచేసి నమోదు చేయండి."); }} disabled={!phone}>OTP పంపు →</Btn>
+      <Btn onClick={() => { setSent(true); if (va) speak("OTP పంపబడింది. దయచేసి నమోదు చేయండి."); }} disabled={!phone}>OTP పంపు →</Btn>
     </> : <>
       <div style={{ color: "#22c55e", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>✅ OTP {phone} కి పంపబడింది</div>
       <Field label="OTP నమోదు" sub="Enter OTP" value={otp} onChange={setOtp} type="number" ph="______" />
-      <Btn onClick={() => { speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 500); }} color="#22c55e">ధృవీకరించు ✓</Btn>
+      <Btn onClick={() => { if (va) speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 500); }} color="#22c55e">ధృవీకరించు ✓</Btn>
     </>}
   </Card>;
 }
@@ -828,7 +889,10 @@ function WorkerProfileWrap({ children, onBack, currentStepNum, totalSteps, prog 
    SOS reads profile.emergencyContact to simulate notification.
    Future: replace the simulated dispatch in SOS with real SMS/WhatsApp/push call.
 ── */
-function WorkerProfile({ onDone, onBack }) {
+function WorkerProfile({ langMode = "te", onDone, onBack }) {
+  const va = langMode === "va";
+  const isEn = langMode === "en";
+  const d = (te, en) => isEn ? en : te;
   // ── Phase A: core profile questions ──────────────────────────────
   const coreQs = [
     { id: "name",     te: "మీ పేరు ఏమిటి?",          en: "Your name?",          icon: "👤", type: "text"   },
@@ -850,9 +914,12 @@ function WorkerProfile({ onDone, onBack }) {
   const [skipOptional, setSkipOptional] = useState(false);
 
   const q = coreQs[cur];
+  const qMain = q ? d(q.te, q.en) : "";
+  const qSub = q ? d(q.en, q.te) : "";
 
   // Speak prompts when phase/step changes
   useEffect(() => {
+    if (!va) return;
     if (phase === "core"       && q)       speakLater(q.te, 300);
     if (phase === "gender")                speakLater("మీ లింగం ఎంచుకోండి — Male, Female, లేదా Other", 300);
     if (phase === "emContact")             speakLater("మీ అత్యవసర సంప్రదింపు పేరు చెప్పండి", 300);
@@ -866,7 +933,7 @@ function WorkerProfile({ onDone, onBack }) {
     if (cur + 1 < coreQs.length) { setCur(cur + 1); }
     else { setPhase("gender"); }
   };
-  const vrCore = t => { setVal(t); speak(t + ". సరే!"); setTimeout(() => advCore(t), 900); };
+  const vrCore = t => { setVal(t); if (va) speak(t + ". సరే!"); setTimeout(() => advCore(t), 900); };
 
   // Finish — build full profile and call onDone
   const finish = (ec) => {
@@ -877,7 +944,7 @@ function WorkerProfile({ onDone, onBack }) {
       // Future-ready hook: add backend dispatch here
       // _sosDispatch: { channel: "sms", endpoint: "/api/sos/notify" }
     };
-    speak("అభినందనలు! మీ ప్రొఫైల్ పూర్తయింది.");
+    if (va) speak("అభినందనలు! మీ ప్రొఫైల్ పూర్తయింది.");
     setTimeout(() => onDone(profile), 700);
   };
 
@@ -909,11 +976,11 @@ function WorkerProfile({ onDone, onBack }) {
     <WorkerProfileWrap onBack={wrapBack} currentStepNum={currentStepNum} totalSteps={totalSteps} prog={prog}>
       <div key={cur} style={{ textAlign: "center", marginBottom: 28, animation: "slideUp .4s both" }}>
         <div style={{ fontSize: 52, marginBottom: 14 }}>{q.icon}</div>
-        <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(16px,4vw,24px)", fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 6 }}>{q.te}</div>
-        <div style={{ color: "#64748b", fontSize: 13 }}>{q.en}</div>
+        <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(16px,4vw,24px)", fontFamily: "'Rajdhani',sans-serif", marginBottom: 6 }}>{qMain}</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>{qSub}</div>
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 7 }}>
-        <input type={q.type} value={val} onChange={e => setVal(e.target.value)} placeholder={q.en}
+        <input type={q.type} value={val} onChange={e => setVal(e.target.value)} placeholder={qMain}
           style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,140,0,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
           onFocus={e => e.target.style.borderColor = "#ff8c00"} onBlur={e => e.target.style.borderColor = "rgba(255,140,0,.3)"} />
         <Mic onResult={vrCore} size={46} />
@@ -921,7 +988,7 @@ function WorkerProfile({ onDone, onBack }) {
       <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది</div>
       <button onClick={() => advCore(val)} disabled={!val}
         style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: val ? "linear-gradient(135deg,#ff8c00,#ff6b00)" : "rgba(255,255,255,.08)", color: val ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: val ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1 }}>
-        తదుపరి →
+        {d('తదుపరి →', 'Next →')}
       </button>
     </WorkerProfileWrap>
   );
@@ -936,30 +1003,30 @@ function WorkerProfile({ onDone, onBack }) {
     const vrGender = t => {
       const l = t.toLowerCase();
       const hit = gOpts.find(g => l.includes(g.en.toLowerCase()) || l.includes(g.te));
-      if (hit) { speak(hit.te + " ఎంచుకున్నారు"); setGender(hit.id); setTimeout(() => { hit.id === "female" ? setPhase("emContact") : setPhase("emOptional"); }, 600); }
-      else speak("మళ్ళీ చెప్పండి — male, female లేదా other?");
+      if (hit) { if (va) speak(hit.te + " ఎంచుకున్నారు"); setGender(hit.id); setTimeout(() => { hit.id === "female" ? setPhase("emContact") : setPhase("emOptional"); }, 600); }
+      else if (va) speak("మళ్ళీ చెప్పండి — male, female లేదా other?");
     };
     return (
       <WorkerProfileWrap onBack={wrapBack} currentStepNum={currentStepNum} totalSteps={totalSteps} prog={prog}>
         <div style={{ textAlign: "center", marginBottom: 28, animation: "slideUp .4s both" }}>
           <div style={{ fontSize: 52, marginBottom: 14 }}>🧬</div>
-          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(16px,4vw,24px)", fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 6 }}>మీ లింగం?</div>
-          <div style={{ color: "#64748b", fontSize: 13 }}>Your gender</div>
+          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(16px,4vw,24px)", fontFamily: "'Rajdhani',sans-serif", marginBottom: 6 }}>{d('మీ లింగం?', 'Your gender?')}</div>
+          <div style={{ color: "#64748b", fontSize: 13 }}>{d('Your gender', 'Your gender')}</div>
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
             <Mic onResult={vrGender} size={44} />
-            <span style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif" }}>🎤 "Male", "Female" లేదా "Other" అని చెప్పండి</span>
+            <span style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{d('🎤 "Male", "Female" లేదా "Other" అని చెప్పండి', '🎤 Say "Male", "Female" or "Other"')}</span>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
           {gOpts.map(g => (
             <button key={g.id}
-              onClick={() => { speak(g.te + " ఎంచుకున్నారు"); setGender(g.id); setTimeout(() => { g.id === "female" ? setPhase("emContact") : setPhase("emOptional"); }, 400); }}
+              onClick={() => { if (va) speak(g.te + " ఎంచుకున్నారు"); setGender(g.id); setTimeout(() => { g.id === "female" ? setPhase("emContact") : setPhase("emOptional"); }, 400); }}
               style={{ background: gender === g.id ? `${g.color}20` : "rgba(255,255,255,.05)", border: `2px solid ${gender === g.id ? g.color : g.color + "35"}`, borderRadius: 18, padding: "22px 10px", cursor: "pointer", textAlign: "center", transition: "all .3s" }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = g.color; e.currentTarget.style.transform = "translateY(-3px)"; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = gender === g.id ? g.color : g.color + "35"; e.currentTarget.style.transform = "none"; }}>
               <div style={{ fontSize: 38, marginBottom: 9 }}>{g.icon}</div>
-              <div style={{ color: gender === g.id ? g.color : "#94a3b8", fontWeight: 700, fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{g.te}</div>
-              <div style={{ color: "#475569", fontSize: 11, marginTop: 3 }}>{g.en}</div>
+              <div style={{ color: gender === g.id ? g.color : "#94a3b8", fontWeight: 700, fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{d(g.te, g.en)}</div>
+              <div style={{ color: "#475569", fontSize: 11, marginTop: 3 }}>{d(g.en, g.te)}</div>
             </button>
           ))}
         </div>
@@ -972,23 +1039,23 @@ function WorkerProfile({ onDone, onBack }) {
     <WorkerProfileWrap onBack={wrapBack} currentStepNum={currentStepNum} totalSteps={totalSteps} prog={prog}>
       <div style={{ textAlign: "center", marginBottom: 22, animation: "slideUp .4s both" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🆘</div>
-        <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 6 }}>అత్యవసర సంప్రదింపు</div>
-        <div style={{ color: "#64748b", fontSize: 13 }}>Emergency Contact (optional)</div>
+        <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Rajdhani',sans-serif", marginBottom: 6 }}>{d('అత్యవసర సంప్రదింపు', 'Emergency Contact')}</div>
+        <div style={{ color: "#64748b", fontSize: 13 }}>{d('Emergency Contact (optional)', 'Emergency Contact (optional)')}</div>
       </div>
       <div style={{ background: "rgba(255,140,0,.07)", border: "1px solid rgba(255,140,0,.2)", borderRadius: 14, padding: "14px 16px", marginBottom: 22 }}>
         <div style={{ color: "#fbbf24", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", lineHeight: 1.6 }}>
-          ⚠️ అత్యవసర పరిస్థితుల్లో SOS నొక్కినప్పుడు ఈ నంబర్ కి notification పంపబడుతుంది.
+          {d('⚠️ అత్యవసర పరిస్థితుల్లో SOS నొక్కినప్పుడు ఈ నంబర్ కి notification పంపబడుతుంది.', '⚠️ This number will be notified if you press SOS.')}
         </div>
         <div style={{ color: "#64748b", fontSize: 11, marginTop: 5 }}>Emergency contact will be notified if you press SOS.</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <button onClick={() => setPhase("emContact")}
           style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: "linear-gradient(135deg,#ff8c00,#ff6b00)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
-          ➕ సంప్రదింపు జోడించు
+          {d('➕ సంప్రదింపు జోడించు', '➕ Add contact')}
         </button>
         <button onClick={() => finish(null)}
           style={{ width: "100%", padding: "13px", borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "none", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
-          దాటవేయి →
+          {d('దాటవేయి →', 'Skip →')}
         </button>
       </div>
     </WorkerProfileWrap>
@@ -1009,23 +1076,23 @@ function WorkerProfile({ onDone, onBack }) {
         )}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>👤</div>
-          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 5 }}>అత్యవసర సంప్రదింపు పేరు</div>
-          <div style={{ color: "#64748b", fontSize: 13 }}>Emergency contact name</div>
+          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Rajdhani',sans-serif", marginBottom: 5 }}>{d('అత్యవసర సంప్రదింపు పేరు', 'Emergency contact name')}</div>
+          <div style={{ color: "#64748b", fontSize: 13 }}>{d('Emergency contact name', 'Emergency contact name')}</div>
         </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 7 }}>
-          <input type="text" value={ecName} onChange={e => setEcName(e.target.value)} placeholder="పేరు / Name"
+          <input type="text" value={ecName} onChange={e => setEcName(e.target.value)} placeholder={d('పేరు / Name', 'Name')}
             style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,140,0,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
             onFocus={e => e.target.style.borderColor = "#ff8c00"} onBlur={e => e.target.style.borderColor = "rgba(255,140,0,.3)"} />
-          <Mic onResult={t => { setEcName(t); speak(t + ". సరే!"); setTimeout(() => setPhase("emPhone"), 900); }} size={46} />
+          <Mic onResult={t => { setEcName(t); if (va) speak(t + ". సరే!"); setTimeout(() => setPhase("emPhone"), 900); }} size={46} />
         </div>
-        <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది</div>
+        <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>{d('🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది', '🎤 Speak it to move on automatically')}</div>
         <button onClick={() => setPhase("emPhone")} disabled={!ecName}
           style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: ecName ? "linear-gradient(135deg,#ff8c00,#ff6b00)" : "rgba(255,255,255,.08)", color: ecName ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: ecName ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
-          తదుపరి →
+          {d('తదుపరి →', 'Next →')}
         </button>
         {!isFemale && (
           <button onClick={() => finish(null)} style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 13, border: "1px solid rgba(255,255,255,.1)", background: "none", color: "#64748b", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
-            దాటవేయి →
+            {d('దాటవేయి →', 'Skip →')}
           </button>
         )}
       </div>
@@ -1038,27 +1105,27 @@ function WorkerProfile({ onDone, onBack }) {
       <div style={{ animation: "slideUp .4s both" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>📞</div>
-          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 5 }}>అత్యవసర ఫోన్ నంబర్</div>
-          <div style={{ color: "#64748b", fontSize: 13 }}>Emergency contact phone number</div>
+          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "clamp(15px,4vw,22px)", fontFamily: "'Rajdhani',sans-serif", marginBottom: 5 }}>{d('అత్యవసర ఫోన్ నంబర్', 'Emergency contact phone number')}</div>
+          <div style={{ color: "#64748b", fontSize: 13 }}>{d('Emergency contact phone number', 'Emergency contact phone number')}</div>
         </div>
         {/* Explain clearly what this is for */}
         <div style={{ background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 12, padding: "11px 15px", marginBottom: 18, display: "flex", alignItems: "flex-start", gap: 9 }}>
           <span style={{ fontSize: 16, flexShrink: 0 }}>ℹ️</span>
           <div style={{ color: "#fca5a5", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif", lineHeight: 1.5 }}>
-            మీరు SOS నొక్కినప్పుడు <strong style={{ color: "#f87171" }}>{ecName || "ఈ వ్యక్తి"}</strong> కి అత్యవసర notification పంపబడుతుంది.
-            <br /><span style={{ color: "#64748b" }}>This number will be notified when you press SOS.</span>
+            {d(`మీరు SOS నొక్కినప్పుడు <strong style={{ color: "#f87171" }}>${ecName || "ఈ వ్యక్తి"}</strong> కి అత్యవసర notification పంపబడుతుంది.`, `When you press SOS, <strong style={{ color: "#f87171" }}>${ecName || "this person"}</strong> will receive an emergency notification.`)}
+            <br /><span style={{ color: "#64748b" }}>{d('This number will be notified when you press SOS.', 'This number will be notified when you press SOS.')}</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 7 }}>
           <input type="tel" value={ecPhone} onChange={e => setEcPhone(e.target.value)} placeholder="9XXXXXXXXX"
             style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,140,0,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
             onFocus={e => e.target.style.borderColor = "#ff8c00"} onBlur={e => e.target.style.borderColor = "rgba(255,140,0,.3)"} />
-          <Mic onResult={t => { const n = t.replace(/\D/g, ""); setEcPhone(n); speak("నంబర్ నమోదు అయింది"); setTimeout(() => finish({ name: ecName, phone: n }), 900); }} size={46} />
+          <Mic onResult={t => { const n = t.replace(/\D/g, ""); setEcPhone(n); if (va) speak("నంబర్ నమోదు అయింది"); setTimeout(() => finish({ name: ecName, phone: n }), 900); }} size={46} />
         </div>
-        <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది</div>
+        <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>{d('🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది', '🎤 Speak it to move on automatically')}</div>
         <button onClick={() => finish({ name: ecName, phone: ecPhone })} disabled={!ecPhone}
           style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: ecPhone ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.08)", color: ecPhone ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: ecPhone ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
-          పూర్తి చేయండి ✓
+          {d('పూర్తి చేయండి ✓', 'Complete ✓')}
         </button>
       </div>
     </WorkerProfileWrap>
@@ -1068,41 +1135,58 @@ function WorkerProfile({ onDone, onBack }) {
 }
 
 /* ── JOB BOARD (with SpeakerButton + category icons) ── */
-function Jobs() {
-  const [filter, setFilter] = useState("అన్నీ");
+function Jobs({ langMode = "te" }) {
+  const isEn = langMode === "en";
+  const [filter, setFilter] = useState("all");
   const { t, show } = useToast();
-  useEffect(() => { speakLater("ఇవి మీ దగ్గరలో ఉన్న పనులు", 400); }, []);
+  useEffect(() => { if (langMode === "va") speakLater(isEn ? "Here are your nearby jobs" : "ఇవి మీ దగ్గరలో ఉన్న పనులు", 400); }, []);
   const jobs = [
-    { id: 1, icon: "🌾", type: "వ్యవసాయం", en: "Farming", loc: "హైదరాబాద్ – 3 km", wage: "₹500/day", trust: 5, urgent: true, w: 8, color: "#22c55e" },
-    { id: 2, icon: "🏗️", type: "నిర్మాణం", en: "Construction", loc: "సికింద్రాబాద్ – 5 km", wage: "₹650/day", trust: 4, urgent: false, w: 15, color: "#ff8c00" },
-    { id: 3, icon: "🎨", type: "పెయింటింగ్", en: "Painting", loc: "కూకట్‌పల్లి – 7 km", wage: "₹550/day", trust: 5, urgent: false, w: 4, color: "#3b82f6" },
-    { id: 4, icon: "🚗", type: "డ్రైవింగ్", en: "Driving", loc: "మాదాపూర్ – 2 km", wage: "₹700/day", trust: 4, urgent: true, w: 2, color: "#8b5cf6" },
-    { id: 5, icon: "🔧", type: "మెకానిక్", en: "Mechanic", loc: "అమీర్‌పేట్ – 6 km", wage: "₹600/day", trust: 5, urgent: false, w: 3, color: "#ef4444" },
-    { id: 6, icon: "🧹", type: "శుభ్రత", en: "Cleaning", loc: "జూబ్లీ హిల్స్ – 4 km", wage: "₹400/day", trust: 4, urgent: false, w: 6, color: "#06b6d4" },
+    { id: 1, icon: "🌾", cat: "farming", te: "వ్యవసాయం", en: "Farming", loc: "హైదరాబాద్ – 3 km", enLoc: "Hyderabad – 3 km", wage: "₹500/day", trust: 5, urgent: true, w: 8, color: "#22c55e" },
+    { id: 2, icon: "🏗️", cat: "construction", te: "నిర్మాణం", en: "Construction", loc: "సికింద్రాబాద్ – 5 km", enLoc: "Secunderabad – 5 km", wage: "₹650/day", trust: 4, urgent: false, w: 15, color: "#ff8c00" },
+    { id: 3, icon: "🎨", cat: "painting", te: "పెయింటింగ్", en: "Painting", loc: "కూకట్‌పల్లి – 7 km", enLoc: "Kukatpally – 7 km", wage: "₹550/day", trust: 5, urgent: false, w: 4, color: "#3b82f6" },
+    { id: 4, icon: "🚗", cat: "driving", te: "డ్రైవింగ్", en: "Driving", loc: "మాదాపూర్ – 2 km", enLoc: "Madapur – 2 km", wage: "₹700/day", trust: 4, urgent: true, w: 2, color: "#8b5cf6" },
+    { id: 5, icon: "🔧", cat: "mechanic", te: "మెకానిక్", en: "Mechanic", loc: "అమీర్‌పేట్ – 6 km", enLoc: "Ameerpet – 6 km", wage: "₹600/day", trust: 5, urgent: false, w: 3, color: "#ef4444" },
+    { id: 6, icon: "🧹", cat: "cleaning", te: "శుభ్రత", en: "Cleaning", loc: "జూబ్లీ హిల్స్ – 4 km", enLoc: "Jubilee Hills – 4 km", wage: "₹400/day", trust: 4, urgent: false, w: 6, color: "#06b6d4" },
   ];
-  const cats = [{ l: "అన్నీ", i: "🔍" }, { l: "వ్యవసాయం", i: "🌾" }, { l: "నిర్మాణం", i: "🏗️" }, { l: "పెయింటింగ్", i: "🎨" }, { l: "డ్రైవింగ్", i: "🚗" }];
-  const filtered = filter === "అన్నీ" ? jobs : jobs.filter(j => j.type === filter);
-  const jobText = j => `${j.type} పని. స్థానం ${j.loc}. వేతనం ${j.wage}. ${j.w} కార్మికులు అవసరం. ${j.urgent ? "అర్జెంట్!" : ""}`;
+  const cats = [
+    { id: "all", l: isEn ? "All" : "అన్నీ", i: "🔍", en: "All" },
+    { id: "farming", l: isEn ? "Farming" : "వ్యవసాయం", i: "🌾", en: "Farming" },
+    { id: "construction", l: isEn ? "Construction" : "నిర్మాణం", i: "🏗️", en: "Construction" },
+    { id: "painting", l: isEn ? "Painting" : "పెయింటింగ్", i: "🎨", en: "Painting" },
+    { id: "driving", l: isEn ? "Driving" : "డ్రైవింగ్", i: "🚗", en: "Driving" },
+  ];
+  const filtered = filter === "all" ? jobs : jobs.filter(j => j.cat === filter);
+  const jobText = j => {
+    const type = isEn ? j.en : j.te;
+    const loc = isEn ? j.enLoc : j.loc;
+    const urgent = j.urgent ? (isEn ? "Urgent!" : "అర్జెంట్!") : "";
+    return isEn ? `${type} job. Location ${loc}. Wage ${j.wage}. ${j.w} workers needed. ${urgent}`
+                : `${type} పని. స్థానం ${loc}. వేతనం ${j.wage}. ${j.w} కార్మికులు అవసరం. ${urgent}`;
+  };
   const vf = tx => {
     const m = cats.find(c => tx.includes(c.l));
-    if (m) { setFilter(m.l); show(`✓ ${m.l} పనులు`, "#ff8c00"); speak(m.l + " పనులు చూపిస్తున్నాం"); }
-    else speak("మళ్ళీ చెప్పండి — వ్యవసాయం, నిర్మాణం, లేదా అన్నీ?");
+    if (m) {
+      setFilter(m.id);
+      show(`✓ ${m.l} ${isEn ? "jobs" : "పనులు"}`, "#ff8c00");
+      if (langMode === "va") speak(isEn ? `${m.l} jobs` : `${m.l} పనులు చూపిస్తున్నాం`);
+    }
+    else if (langMode === "va") speak(isEn ? "Please say farming, construction, or all." : "మళ్ళీ చెప్పండి — వ్యవసాయం, నిర్మాణం, లేదా అన్నీ?");
   };
   return <div style={{ minHeight: "100vh", padding: "36px 18px 100px", position: "relative", zIndex: 2 }}>
     <Toast {...t} />
     <div style={{ maxWidth: 880, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 26, flexWrap: "wrap", gap: 14 }}>
         <div>
-          <h1 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: "clamp(20px,5vw,34px)", fontWeight: 800, margin: 0 }}>దగ్గర పనులు</h1>
-          <p style={{ color: "#94a3b8", fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 13, marginTop: 4 }}>Nearby Jobs — హైదరాబాద్</p>
+          <h1 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: "clamp(20px,5vw,34px)", fontWeight: 800, margin: 0 }}>{isEn ? "Nearby Jobs" : "దగ్గర పనులు"}</h1>
+          <p style={{ color: "#94a3b8", fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 13, marginTop: 4 }}>{isEn ? "Nearby Jobs — Hyderabad" : "Nearby Jobs — హైదరాబాద్"}</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-          <Mic onResult={vf} size={50} /><span style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif" }}>🎤 పని పేరు చెప్పండి</span>
+          <Mic onResult={vf} size={50} /><span style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{isEn ? '🎤 Say a category name' : '🎤 పని పేరు చెప్పండి'}</span>
         </div>
       </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 24, flexWrap: "wrap" }}>
-        {cats.map(c => <button key={c.l} onClick={() => { setFilter(c.l); if (c.l !== "అన్నీ") speak(c.l + " పనులు"); }}
-          style={{ padding: "7px 16px", borderRadius: 50, border: "none", cursor: "pointer", background: filter === c.l ? "#ff8c00" : "rgba(255,255,255,.07)", color: filter === c.l ? "#fff" : "#94a3b8", fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 13, fontWeight: 600, transition: "all .2s", display: "flex", alignItems: "center", gap: 5 }}>
+        {cats.map(c => <button key={c.id} onClick={() => { setFilter(c.id); if (c.id !== "all" && langMode === "va") speak(isEn ? `${c.l} jobs` : `${c.l} పనులు`); }}
+          style={{ padding: "7px 16px", borderRadius: 50, border: "none", cursor: "pointer", background: filter === c.id ? "#ff8c00" : "rgba(255,255,255,.07)", color: filter === c.id ? "#fff" : "#94a3b8", fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 13, fontWeight: 600, transition: "all .2s", display: "flex", alignItems: "center", gap: 5 }}>
           <span style={{ fontSize: 15 }}>{c.i}</span>{c.l}
         </button>)}
       </div>
@@ -1111,19 +1195,19 @@ function Jobs() {
           style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${j.color}30`, borderRadius: 20, padding: "22px 18px", backdropFilter: "blur(12px)", transition: "all .3s", animation: `slideUp .4s ${i*.07}s both`, position: "relative", overflow: "hidden" }}
           onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.borderColor = j.color + "80"; }}
           onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.borderColor = j.color + "30"; }}>
-          {j.urgent && <div style={{ position: "absolute", top: 13, right: 48, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 50 }}>అర్జెంట్</div>}
+          {j.urgent && <div style={{ position: "absolute", top: 13, right: 48, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 50 }}>{isEn ? "Urgent" : "అర్జెంట్"}</div>}
           <div style={{ position: "absolute", top: 11, right: 11 }}><Speaker text={jobText(j)} color={j.color} /></div>
           <div style={{ fontSize: 44, marginBottom: 10 }}>{j.icon}</div>
-          <div style={{ color: j.color, fontWeight: 800, fontSize: 19, fontFamily: "'Rajdhani',sans-serif" }}>{j.type}</div>
-          <div style={{ color: "#64748b", fontSize: 11, marginBottom: 14 }}>{j.en}</div>
+          <div style={{ color: j.color, fontWeight: 800, fontSize: 19, fontFamily: "'Rajdhani',sans-serif" }}>{isEn ? j.en : j.te}</div>
+          <div style={{ color: "#64748b", fontSize: 11, marginBottom: 14 }}>{isEn ? j.enLoc : j.loc}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>📍 <span style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{j.loc}</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>📍 <span style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{isEn ? j.enLoc : j.loc}</span></div>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>💰 <span style={{ color: "#22c55e", fontWeight: 700, fontSize: 14, fontFamily: "'Rajdhani',sans-serif" }}>{j.wage}</span></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>👷 <span style={{ color: "#94a3b8", fontSize: 12 }}>{j.w} కార్మికులు కావాలి</span></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>👷 <span style={{ color: "#94a3b8", fontSize: 12 }}>{isEn ? `${j.w} workers needed` : `${j.w} కార్మికులు కావాలి`}</span></div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>{[...Array(5)].map((_, si) => <span key={si} style={{ fontSize: 13, color: si < j.trust ? "#ff8c00" : "#334155" }}>★</span>)}</div>
-            <button onClick={() => speak(j.type + " పని కోసం దరఖాస్తు చేయబడింది!")} style={{ padding: "7px 16px", borderRadius: 50, border: "none", background: `linear-gradient(135deg,${j.color},${j.color}cc)`, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>Apply →</button>
+            <button onClick={() => { if (langMode === "va") speak(isEn ? `${j.en} job applied for!` : `${j.te} పని కోసం దరఖాస్తు చేయబడింది!`); }} style={{ padding: "7px 16px", borderRadius: 50, border: "none", background: `linear-gradient(135deg,${j.color},${j.color}cc)`, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>{isEn ? "Apply →" : "Apply →"}</button>
           </div>
         </div>)}
       </div>
@@ -1132,7 +1216,7 @@ function Jobs() {
 }
 
 /* ── CONTRACTOR LANGUAGE ── */
-function CLang({ onSelect, onBack }) {
+function CLang({ onSelect, onBack, workerMode = false }) {
   // No auto-speak — voice only activates after user picks Voice Mode
   const opts = [
     { id: "te", icon: "అఆ", title: "తెలుగు", color: "#ff8c00", desc: "తెలుగు భాషలో కొనసాగండి", hint: "Touch & type only" },
@@ -1142,7 +1226,7 @@ function CLang({ onSelect, onBack }) {
   return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
     <Back onClick={onBack} />
     <div style={{ textAlign: "center", marginBottom: 44, animation: "slideUp .6s both" }}>
-      <div style={{ display: "inline-block", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 50, padding: "5px 18px", color: "#22c55e", fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", marginBottom: 14, fontFamily: "'Rajdhani',sans-serif" }}>Contractor Onboarding</div>
+      <div style={{ display: "inline-block", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 50, padding: "5px 18px", color: "#22c55e", fontSize: 11, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", marginBottom: 14, fontFamily: "'Rajdhani',sans-serif" }}>{workerMode ? "Worker Onboarding" : "Contractor Onboarding"}</div>
       <h1 style={{ color: "#f1f5f9", fontSize: "clamp(22px,5vw,38px)", fontWeight: 800, fontFamily: "'Rajdhani',sans-serif", margin: 0 }}>భాష ఎంచుకోండి</h1>
       <p style={{ color: "#94a3b8", marginTop: 10, fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 15 }}>Which language do you prefer?</p>
     </div>
@@ -1866,6 +1950,303 @@ function WorkerMgmt({ onBack }) {
   </div>;
 }
 
+// ══════════════════════════════════════════════════════
+// ADD THIS — AUTH CHOICE SCREEN (Register OR Login)
+// Shared by Worker and Contractor flows.
+// In Voice Assisted mode only, asks the user by voice.
+// ══════════════════════════════════════════════════════
+function AuthChoice({ role, langMode = "te", onRegister, onLogin, onBack }) {
+  const va    = langMode === "va";
+  const isEn  = langMode === "en";
+  const { t, show } = useToast();
+  const ac    = role === "contractor" ? "#22c55e" : "#ff8c00";
+
+  // Labels driven by langMode
+  const heading    = isEn ? "Welcome Back or New?" : "స్వాగతం!";
+  const subHead    = isEn ? "Choose how to continue" : "ఎలా కొనసాగాలో ఎంచుకోండి";
+  const regLabel   = isEn ? "Register" : "నమోదు చేసుకోండి";
+  const regSub     = isEn ? "I'm new here" : "నేను కొత్తగా వస్తున్నాను";
+  const loginLabel = isEn ? "Login" : "లాగిన్";
+  const loginSub   = isEn ? "I already have an account" : "నాకు ఇప్పటికే account ఉంది";
+  const micHint    = "🎤 \"అవును\" లేదా \"లేదు\" అని చెప్పండి";
+
+  // VA mode: ask "ఇంతకు ముందు నమోదు చేసుకున్నారా?" once on mount
+  useEffect(() => {
+    if (!va) return;
+    const cancel = speakLater("ఇంతకు ముందు నమోదు చేసుకున్నారా?", 350);
+    return cancel;
+  }, []);
+
+  // Voice handler — only active in VA mode
+  const vr = tx => {
+    const l = tx.toLowerCase();
+    if (l.includes("అవున") || l.includes("yes") || l.includes("లాగిన్") || l.includes("login") || l.includes("ఉంది")) {
+      show("✓ Login ఎంచుకున్నారు", ac);
+      stopSpeech(); speak("సరే! Login కి వెళ్దాం");
+      setTimeout(onLogin, 900);
+    } else if (l.includes("లేద") || l.includes("no") || l.includes("కొత్త") || l.includes("new") || l.includes("నమోదు")) {
+      show("✓ నమోదు ఎంచుకున్నారు", ac);
+      stopSpeech(); speak("సరే! నమోదు కి వెళ్దాం");
+      setTimeout(onRegister, 900);
+    } else {
+      speak("మళ్ళీ చెప్పండి — అవును లేదా లేదు?");
+    }
+  };
+
+  const opts = [
+    {
+      id: "register", icon: "✨", label: regLabel, sub: regSub,
+      onClick: () => { stopSpeech(); onRegister(); },
+    },
+    {
+      id: "login", icon: "🔑", label: loginLabel, sub: loginSub,
+      onClick: () => { stopSpeech(); onLogin(); },
+    },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
+      <Toast {...t} />
+      <Back onClick={() => { stopSpeech(); onBack(); }} />
+
+      <div style={{ textAlign: "center", marginBottom: 44, animation: "slideUp .6s both" }}>
+        <h1 style={{ color: "#f1f5f9", fontSize: "clamp(22px,5vw,40px)", fontWeight: 800, fontFamily: "'Rajdhani',sans-serif", margin: 0 }}>{heading}</h1>
+        <p style={{ color: "#94a3b8", marginTop: 10, fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 15 }}>{subHead}</p>
+
+        {/* Mic + hint shown only in VA mode */}
+        {va && (
+          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+            <div style={{ background: `${ac}12`, border: `1px solid ${ac}35`, borderRadius: 12, padding: "9px 18px", marginBottom: 8 }}>
+              <span style={{ color: ac, fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", fontWeight: 700 }}>
+                🎤 "ఇంతకు ముందు నమోదు చేసుకున్నారా?"
+              </span>
+            </div>
+            <Mic onResult={vr} size={52} color={ac} />
+            <span style={{ color: "#47556980", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{micHint}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 20, maxWidth: 580, width: "100%" }}>
+        {opts.map((o, i) => (
+          <button key={o.id} onClick={o.onClick}
+            style={{ background: "rgba(255,255,255,.04)", border: `2px solid ${ac}35`, borderRadius: 22, padding: "34px 26px", cursor: "pointer", textAlign: "center", backdropFilter: "blur(16px)", transition: "all .35s cubic-bezier(.34,1.56,.64,1)", animation: `slideUp .5s ${i * .12}s both`, boxShadow: `0 4px 28px ${ac}15` }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-7px) scale(1.02)"; e.currentTarget.style.borderColor = ac; e.currentTarget.style.boxShadow = `0 12px 40px ${ac}30`; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.borderColor = `${ac}35`; e.currentTarget.style.boxShadow = `0 4px 28px ${ac}15`; }}>
+            <div style={{ fontSize: 52, marginBottom: 14 }}>{o.icon}</div>
+            <div style={{ color: ac, fontWeight: 800, fontSize: 24, fontFamily: "'Rajdhani',sans-serif" }}>{o.label}</div>
+            <div style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 8, lineHeight: 1.5 }}>{o.sub}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════
+// ADD THIS — WORKER LOGIN
+// Simple OTP-based login. No profile questions.
+// ══════════════════════════════════════════════════════
+function WorkerLogin({ langMode = "te", onDone, onBack }) {
+  const va   = langMode === "va";
+  const isEn = langMode === "en";
+  const [phone, setPhone]   = useState("");
+  const [otp,   setOtp]     = useState("");
+  const [sent,  setSent]    = useState(false);
+  const [step, setStep]     = useState(0); // 0: choose method, 1: method flow
+  const [method, setMethod] = useState(null); // 'face'|'voice'|'phone'
+
+  const heading  = isEn ? "Worker Login"        : "కార్మికుడు లాగిన్";
+  const phLabel  = isEn ? "Phone Number"         : "ఫోన్ నంబర్";
+  const sendBtn  = isEn ? "Send OTP →"           : "OTP పంపు →";
+  const otpLabel = isEn ? "Enter OTP"            : "OTP నమోదు";
+  const verBtn   = isEn ? "Login ✓"              : "లాగిన్ ✓";
+  const sentMsg  = isEn ? `✅ OTP sent to ${phone}` : `✅ OTP ${phone} కి పంపబడింది`;
+
+  useEffect(() => {
+    if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
+  }, [step]);
+
+  const doSend = () => {
+    if (!phone) return;
+    setSent(true);
+    if (va) speak("OTP పంపబడింది");
+  };
+
+  const doLogin = () => {
+    if (!otp) return;
+    if (va) speak("స్వాగతం! లాగిన్ అయ్యారు.");
+    setTimeout(onDone, 600);
+  };
+
+  // Method chooser UI
+  if (step === 0) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
+      <Card title={heading} sub={isEn ? "Login to your account" : "మీ account లోకి లాగిన్ చేయండి"} onBack={() => { stopSpeech(); onBack(); }} ac="#ff8c00">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 18, maxWidth: 590, width: "100%" }}>
+          {[{ id: "face", icon: "🤳", label: "Face" }, { id: "voice", icon: "🎤", label: "Voice" }, { id: "phone", icon: "📱", label: "Phone" }].map(m =>
+            <button key={m.id} onClick={() => { setMethod(m.id); setStep(1); if (va && m.id === 'voice') speak(m.label); }}
+              style={{ background: "rgba(255,255,255,.05)", border: "2px solid rgba(255,140,0,.3)", borderRadius: 20, padding: "28px 18px", cursor: "pointer", textAlign: "center", transition: "all .3s", backdropFilter: "blur(12px)" }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>{m.icon}</div>
+              <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 15, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{m.label}</div>
+              <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>{m.id === 'phone' ? 'OTP' : (m.id === 'voice' ? 'Voice login' : 'Face login')}</div>
+            </button>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+
+  // step === 1: method-specific flows
+  if (method === 'face') return (
+    <Card title={heading} sub={isEn ? "Face login" : "Face ద్వారా లాగిన్"} onBack={() => { setStep(0); }} ac="#ff8c00">
+      <div style={{ width: 180, height: 180, borderRadius: "50%", border: "3px dashed #ff8c00", margin: "0 auto 22px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,140,0,.05)", animation: "pulse 2s infinite", position: "relative", overflow: "hidden" }}>
+        <div style={{ fontSize: 66 }}>🤳</div>
+        <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 7 }}>Look at the camera</div>
+        <div style={{ position: "absolute", left: 0, right: 0, height: 3, background: "linear-gradient(90deg,transparent,#ff8c00,transparent)", animation: "scanLine 2s linear infinite", top: 0 }} />
+      </div>
+      <Btn onClick={() => { if (va) speak("లాగిన్ అయింది"); setTimeout(onDone, 600); }}>Login ✓</Btn>
+    </Card>
+  );
+
+  if (method === 'voice') return (
+    <Card title={heading} sub={isEn ? "Voice login" : "Voice ద్వారా లాగిన్"} onBack={() => { setStep(0); }} ac="#ff8c00">
+      <div style={{ textAlign: "center" }}>
+        <div style={{ color: "#94a3b8", fontSize: 14, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18 }}>Speak your passphrase</div>
+        <Mic onResult={tx => { if (va) speak("లాగిన్ అయింది"); setTimeout(onDone, 600); }} size={68} />
+      </div>
+    </Card>
+  );
+
+  // phone method (reuse OTP flow)
+  return (
+    <Card title={heading} sub={isEn ? "Phone OTP" : "ఫోన్ OTP"} onBack={() => { setStep(0); }} ac="#ff8c00">
+      {!sent ? (
+        <>
+          <Field label={phLabel} sub="Phone" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" ac="#ff8c00" />
+          {va && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n.length >= 10) { setPhone(n); speak("నంబర్ నమోదు అయింది"); } }} size={46} color="#ff8c00" />
+            </div>
+          )}
+          <Btn onClick={doSend} color="#ff8c00" disabled={!phone}>{sendBtn}</Btn>
+        </>
+      ) : (
+        <>
+          <div style={{ color: "#22c55e", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>{sentMsg}</div>
+          <Field label={otpLabel} sub="OTP" value={otp} onChange={setOtp} type="number" ph="_ _ _ _ _ _" ac="#ff8c00" />
+          {va && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n) { setOtp(n); speak("OTP నమోదు అయింది"); } }} size={46} color="#ff8c00" />
+            </div>
+          )}
+          <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{verBtn}</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════
+// ADD THIS — CONTRACTOR LOGIN
+// Simple OTP-based login. No profile questions.
+// ══════════════════════════════════════════════════════
+function ContractorLogin({ langMode = "te", onDone, onBack }) {
+  const va   = langMode === "va";
+  const isEn = langMode === "en";
+  const [phone, setPhone]   = useState("");
+  const [otp,   setOtp]     = useState("");
+  const [sent,  setSent]    = useState(false);
+  const [step, setStep]     = useState(0);
+  const [method, setMethod] = useState(null);
+
+  const heading  = isEn ? "Contractor Login"     : "కాంట్రాక్టర్ లాగిన్";
+  const phLabel  = isEn ? "Phone Number"          : "ఫోన్ నంబర్";
+  const sendBtn  = isEn ? "Send OTP →"            : "OTP పంపు →";
+  const otpLabel = isEn ? "Enter OTP"             : "OTP నమోదు";
+  const verBtn   = isEn ? "Login ✓"               : "లాగిన్ ✓";
+  const sentMsg  = isEn ? `✅ OTP sent to ${phone}` : `✅ OTP ${phone} కి పంపబడింది`;
+
+  useEffect(() => {
+    if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
+  }, [step]);
+
+  const doSend = () => {
+    if (!phone) return;
+    setSent(true);
+    if (va) speak("OTP పంపబడింది");
+  };
+
+  const doLogin = () => {
+    if (!otp) return;
+    if (va) speak("స్వాగతం! కాంట్రాక్టర్ లాగిన్ అయ్యారు.");
+    setTimeout(onDone, 600);
+  };
+
+  if (step === 0) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
+      <Card title={heading} sub={isEn ? "Login to your account" : "మీ account లోకి లాగిన్ చేయండి"} onBack={() => { stopSpeech(); onBack(); }} ac="#22c55e">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 18, maxWidth: 590, width: "100%" }}>
+          {[{ id: "face", icon: "🤳", label: "Face" }, { id: "voice", icon: "🎤", label: "Voice" }, { id: "phone", icon: "📱", label: "Phone" }].map(m =>
+            <button key={m.id} onClick={() => { setMethod(m.id); setStep(1); if (va && m.id === 'voice') speak(m.label); }}
+              style={{ background: "rgba(255,255,255,.04)", border: "2px solid rgba(34,197,94,.3)", borderRadius: 20, padding: "28px 18px", cursor: "pointer", textAlign: "center", transition: "all .3s" }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>{m.icon}</div>
+              <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 15, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{m.label}</div>
+              <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>{m.id === 'phone' ? 'OTP' : (m.id === 'voice' ? 'Voice login' : 'Face login')}</div>
+            </button>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+
+  if (method === 'face') return (
+    <Card title={heading} sub={isEn ? "Face login" : "Face ద్వారా లాగిన్"} onBack={() => { setStep(0); }} ac="#22c55e">
+      <div style={{ width: 180, height: 180, borderRadius: "50%", border: "3px dashed #22c55e", margin: "0 auto 22px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(34,197,94,.05)", animation: "pulse 2s infinite", position: "relative", overflow: "hidden" }}>
+        <div style={{ fontSize: 66 }}>🤳</div>
+        <div style={{ position: "absolute", left: 0, right: 0, height: 3, background: "linear-gradient(90deg,transparent,#22c55e,transparent)", animation: "scanLine 2s linear infinite", top: 0 }} />
+      </div>
+      <Btn onClick={() => { if (va) speak("లాగిన్ అయింది"); setTimeout(onDone, 600); }} color="#22c55e">Login ✓</Btn>
+    </Card>
+  );
+
+  if (method === 'voice') return (
+    <Card title={heading} sub={isEn ? "Voice login" : "Voice ద్వారా లాగిన్"} onBack={() => { setStep(0); }} ac="#22c55e">
+      <div style={{ textAlign: "center" }}>
+        <div style={{ color: "#94a3b8", fontSize: 14, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18 }}>Speak your passphrase</div>
+        <Mic onResult={tx => { if (va) speak("లాగిన్ అయ్యారు"); setTimeout(onDone, 600); }} size={68} color="#22c55e" />
+      </div>
+    </Card>
+  );
+
+  return (
+    <Card title={heading} sub={isEn ? "Phone OTP" : "ఫోన్ OTP"} onBack={() => { setStep(0); }} ac="#22c55e">
+      {!sent ? (
+        <>
+          <Field label={phLabel} sub="Phone" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" ac="#22c55e" />
+          {va && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n.length >= 10) { setPhone(n); speak("నంబర్ నమోదు అయింది"); } }} size={46} color="#22c55e" />
+            </div>
+          )}
+          <Btn onClick={doSend} color="#22c55e" disabled={!phone}>{sendBtn}</Btn>
+        </>
+      ) : (
+        <>
+          <div style={{ color: "#22c55e", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>{sentMsg}</div>
+          <Field label={otpLabel} sub="OTP" value={otp} onChange={setOtp} type="number" ph="_ _ _ _ _ _" ac="#22c55e" />
+          {va && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n) { setOtp(n); speak("OTP నమోదు అయింది"); } }} size={46} color="#22c55e" />
+            </div>
+          )}
+          <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{verBtn}</Btn>
+        </>
+      )}
+    </Card>
+  );
+}
+
 /* ═════════════════════════════════════════════
    APP SHELL
 ═════════════════════════════════════════════ */
@@ -1874,26 +2255,43 @@ export default function NiyogaX() {
   const [role, setRole] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [cProf, setCProf] = useState({});
-  // Worker profile — stored here so SOS can read emergencyContact
   const [wProf, setWProf] = useState({});
-  // langMode persists across ALL contractor screens: "te" | "en" | "va"
-  const [langMode, setLangMode] = useState("te");
+  const [langMode, setLangMode]   = useState("te");
+  const [wLangMode, setWLangMode] = useState("te");
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
-  // Conditional speak — only fires when mode is "va" (Voice Assisted)
+  // Niyo assistant + job filter wiring — unchanged from original
+  const { jobFilter, setJobFilter } = useJobFilter();
+  useEffect(() => {
+    if (jobFilter) { setPage("jobs"); setScreen("main"); }
+  }, [jobFilter]);
+
+  const handleAssistantNavigate = (path, filter) => {
+    if (filter !== null && filter !== undefined) {
+      setJobFilter(filter);
+      const pageMap = { "/": "home", "/jobs": "jobs", "/profile": "profile", "/dashboard": "dashboard", "/post-job": "post" };
+      if (["/jobs","/","/dashboard","/profile","/post-job"].includes(path)) setScreen("main");
+      if (pageMap[path]) setPage(pageMap[path]);
+    }
+  };
+
   const vSpeak = (text) => { if (langMode === "va") speak(text); };
 
+  const wTx = T[wLangMode] || T.te;
+
   const reset = () => {
+    stopSpeech();
     setScreen("landing"); setRole(null); setPage("dashboard");
-    setCProf({}); setWProf({}); setLangMode("te");
+    setCProf({}); setWProf({}); setLangMode("te"); setWLangMode("te");
     speak("మళ్ళీ స్వాగతం!");
   };
 
   const selectRole = r => {
+    stopSpeech();
     setRole(r);
-    setScreen(r === "contractor" ? "c_lang" : "w_reg");
+    setScreen(r === "contractor" ? "c_lang" : "w_lang");
   };
 
-  // tx = shorthand to get translated string for current langMode
   const tx = T[langMode] || T.te;
 
   return (
@@ -1904,31 +2302,86 @@ export default function NiyogaX() {
       <Silhouettes />
 
       {screen === "landing"   && <Landing onGo={() => setScreen("role")} />}
-      {screen === "role"      && <RoleSelect onBack={() => setScreen("landing")} onSelect={selectRole} />}
+      {screen === "role"      && <RoleSelect onBack={() => { stopSpeech(); setScreen("landing"); }} onSelect={selectRole} />}
 
-      {/* Worker flow */}
-      {screen === "w_reg"    && <WorkerReg onBack={() => setScreen("role")} onDone={() => setScreen("w_prof")} />}
-      {screen === "w_prof"   && <WorkerProfile onBack={() => setScreen("w_reg")} onDone={profile => {
+      {/* ── WORKER FLOW ── */}
+      {/* ADD THIS — Worker language selection (same CLang component, same UI) */}
+      {screen === "w_lang" && (
+        <CLang
+          workerMode={true}
+          onBack={() => { stopSpeech(); setScreen("role"); }}
+          onSelect={m => {
+            setWLangMode(m);
+            setScreen("w_auth");
+          }}
+        />
+      )}
+      {/* ADD THIS — Worker register / login choice */}
+      {screen === "w_auth" && (
+        <AuthChoice
+          role="worker"
+          langMode={wLangMode}
+          onBack={() => { stopSpeech(); setScreen("w_lang"); }}
+          onRegister={() => { stopSpeech(); setScreen("w_reg"); }}
+          onLogin={() => { stopSpeech(); setScreen("w_login"); }}
+        />
+      )}
+      {/* ADD THIS — Worker login */}
+      {screen === "w_login" && (
+        <WorkerLogin
+          langMode={wLangMode}
+          onBack={() => { stopSpeech(); setScreen("w_auth"); }}
+          onDone={() => {
+            if (wLangMode === "va") speak("స్వాగతం! లాగిన్ అయ్యారు.");
+            setPage("jobs"); setScreen("main");
+          }}
+        />
+      )}
+      {/* Existing worker registration — UNCHANGED */}
+      {screen === "w_reg"  && <WorkerReg langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_auth"); }} onDone={() => setScreen("w_prof")} />}
+      {screen === "w_prof" && <WorkerProfile langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_reg"); }} onDone={profile => {
         setWProf(profile);
         speak("ప్రొఫైల్ పూర్తయింది! స్వాగతం!");
         setPage("jobs"); setScreen("main");
       }} />}
 
-      {/* Contractor flow — langMode stored on selection, passed everywhere */}
-      {screen === "c_lang"   && <CLang onBack={() => setScreen("role")} onSelect={m => { setLangMode(m); setScreen("c_reg"); }} />}
-      {screen === "c_reg"    && <CReg   langMode={langMode} onBack={() => setScreen("c_lang")} onDone={() => setScreen("c_prof")} />}
-      {screen === "c_prof"   && <CProfile langMode={langMode} onBack={() => setScreen("c_reg")} onDone={d => {
+      {/* ── CONTRACTOR FLOW — all existing screens UNCHANGED ── */}
+      {screen === "c_lang" && <CLang onBack={() => { stopSpeech(); setScreen("role"); }} onSelect={m => { setLangMode(m); setScreen("c_auth"); }} />}
+      {/* ADD THIS — Contractor register / login choice */}
+      {screen === "c_auth" && (
+        <AuthChoice
+          role="contractor"
+          langMode={langMode}
+          onBack={() => { stopSpeech(); setScreen("c_lang"); }}
+          onRegister={() => { stopSpeech(); setScreen("c_reg"); }}
+          onLogin={() => { stopSpeech(); setScreen("c_login"); }}
+        />
+      )}
+      {/* ADD THIS — Contractor login */}
+      {screen === "c_login" && (
+        <ContractorLogin
+          langMode={langMode}
+          onBack={() => { stopSpeech(); setScreen("c_auth"); }}
+          onDone={() => {
+            if (langMode === "va") speak(T.va.cDoneSpeak);
+            setPage("dashboard"); setScreen("main");
+          }}
+        />
+      )}
+      {/* Existing contractor registration — UNCHANGED */}
+      {screen === "c_reg"  && <CReg   langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_auth"); }} onDone={() => setScreen("c_prof")} />}
+      {screen === "c_prof" && <CProfile langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_reg"); }} onDone={d => {
         setCProf(d);
         if (langMode === "va") speak(T.va.cDoneSpeak);
         setPage("dashboard"); setScreen("main");
       }} />}
 
       {/* Worker main */}
-      {screen === "main" && role === "worker" && page === "jobs"    && <Jobs />}
+      {screen === "main" && role === "worker" && page === "jobs"    && <Jobs langMode={wLangMode} />}
       {screen === "main" && role === "worker" && page === "home"    && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", textAlign: "center", padding: 40 }}>
         <div style={{ fontSize: 72, marginBottom: 20 }}>👋</div>
-        <h2 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: 30, fontWeight: 800 }}>స్వాగతం!</h2>
-        <button onClick={() => setPage("jobs")} style={{ marginTop: 24, padding: "13px 34px", background: "linear-gradient(135deg,#ff8c00,#ff6b00)", border: "none", borderRadius: 50, color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>పనులు చూడండి →</button>
+        <h2 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: 30, fontWeight: 800 }}>{wTx.wHomeWelcome}</h2>
+        <button onClick={() => setPage("jobs")} style={{ marginTop: 24, padding: "13px 34px", background: "linear-gradient(135deg,#ff8c00,#ff6b00)", border: "none", borderRadius: 50, color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>{wTx.wHomeBtn}</button>
       </div>}
       {screen === "main" && role === "worker" && page === "profile" && (() => {
         const ec = wProf?.emergencyContact;
@@ -1941,11 +2394,11 @@ export default function NiyogaX() {
               <div style={{ color: "#64748b", fontSize: 12, marginTop: 3, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{wProf?.workType || "కార్మికుడు"}</div>
               {/* Profile rows */}
               {[
-                ["📍 స్థానం",    wProf?.location || "హైదరాబాద్"],
-                ["⭐ రేటింగ్",   "4.9 / 5.0"],
-                ["✅ ధృవీకరణ",  "పూర్తయింది"],
-                ["💰 రోజు కూలి", wProf?.wage ? `₹${wProf.wage}/day` : "—"],
-                ["🧬 లింగం",    wProf?.gender === "female" ? "స్త్రీ" : wProf?.gender === "male" ? "పురుషుడు" : wProf?.gender ? "ఇతర" : "—"],
+                [wTx.wProfileLoc,    wProf?.location || (wLangMode === "en" ? "Hyderabad" : "హైదరాబాదు")],
+                [wTx.wProfileRating,   "4.9 / 5.0"],
+                [wTx.wProfileVerified,  wLangMode === "en" ? "Complete" : "పూర్తయింది"],
+                [wTx.wProfileDaily, wProf?.wage ? `₹${wProf.wage}/day` : "—"],
+                [wTx.wProfileGender,    wProf?.gender === "female" ? (wLangMode === "en" ? "Female" : "స్త్రీ") : wProf?.gender === "male" ? (wLangMode === "en" ? "Male" : "పురుషుడు") : wProf?.gender ? (wLangMode === "en" ? "Other" : "ఇతర") : "—"],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "10px 13px", background: "rgba(255,255,255,.05)", borderRadius: 11, marginTop: 8 }}>
                   <span style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{k}</span>
@@ -1956,9 +2409,9 @@ export default function NiyogaX() {
               {ec ? (
                 <div style={{ marginTop: 14, background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 14, padding: "13px 16px", textAlign: "left" }}>
                   <div style={{ color: "#ef4444", fontWeight: 700, fontSize: 12, fontFamily: "'Rajdhani',sans-serif", letterSpacing: 1, textTransform: "uppercase", marginBottom: 9, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>🆘</span> Emergency Contact
+                    <span>🆘</span> {wTx.wProfileEmergencyLabel}
                   </div>
-                  {[["👤 పేరు", ec.name], ["📞 ఫోన్", ec.phone]].map(([k, v]) => (
+                  {[[wLangMode === "en" ? "👤 Name" : "👤 పేరు", ec.name], [wLangMode === "en" ? "📞 Phone" : "📞 ఫోన్", ec.phone]].map(([k, v]) => (
                     <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
                       <span style={{ color: "#64748b", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{k}</span>
                       <span style={{ color: "#fca5a5", fontWeight: 700, fontSize: 12 }}>{v}</span>
@@ -1973,7 +2426,7 @@ export default function NiyogaX() {
               ) : (
                 <div style={{ marginTop: 14, background: "rgba(255,140,0,.05)", border: "1px solid rgba(255,140,0,.15)", borderRadius: 12, padding: "10px 14px", display: "flex", gap: 7, alignItems: "center" }}>
                   <span style={{ fontSize: 14 }}>⚠️</span>
-                  <span style={{ color: "#64748b", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>అత్యవసర సంప్రదింపు జోడించబడలేదు</span>
+                  <span style={{ color: "#64748b", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{wTx.wProfileNoContact}</span>
                 </div>
               )}
               <button onClick={reset} style={{ marginTop: 18, padding: "11px 26px", borderRadius: 50, border: "1px solid rgba(255,60,0,.4)", background: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, fontFamily: "'Rajdhani',sans-serif", fontWeight: 700 }}>లాగ్ అవుట్</button>
@@ -2003,14 +2456,14 @@ export default function NiyogaX() {
             <span style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{k}</span>
             <span style={{ color: "#22c55e", fontWeight: 700, fontSize: 12 }}>{v}</span>
           </div>)}
-          <button onClick={reset} style={{ marginTop: 22, padding: "11px 26px", borderRadius: 50, border: "1px solid rgba(255,60,0,.4)", background: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, fontFamily: "'Rajdhani',sans-serif", fontWeight: 700 }}>{tx.logout}</button>
+          <button onClick={reset} style={{ marginTop: 22, padding: "11px 26px", borderRadius: 50, border: "1px solid rgba(255,60,0,.4)", background: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, fontFamily: "'Rajdhani',sans-serif", fontWeight: 700 }}>{wTx.logout}</button>
         </div>
       </div>}
 
-      <Nav page={page} go={setPage} role={screen === "main" ? role : null} langMode={langMode} />
-      <Bot onCmd={r => { setRole(r); setScreen(r === "contractor" ? "c_lang" : "w_reg"); }} />
+      <Nav page={page} go={setPage} role={screen === "main" ? role : null} langMode={screen === "main" && role === "worker" ? wLangMode : langMode} />
+      <Bot onCmd={r => { setRole(r); setScreen(r === "contractor" ? "c_lang" : "w_reg"); }} onOpenChange={setAssistantOpen} onNavigate={handleAssistantNavigate} />
       {/* SOS now receives worker profile so it can read emergencyContact */}
-      <SOS workerProfile={role === "worker" ? wProf : null} />
+      <SOS workerProfile={role === "worker" ? wProf : null} style={assistantOpen ? { bottom: "90px", right: "80px" } : undefined} />
     </>
   );
 }
