@@ -2251,13 +2251,68 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
    APP SHELL
 ═════════════════════════════════════════════ */
 export default function NiyogaX() {
-  const [screen, setScreen] = useState("landing");
-  const [role, setRole] = useState(null);
-  const [page, setPage] = useState("dashboard");
-  const [cProf, setCProf] = useState({});
-  const [wProf, setWProf] = useState({});
-  const [langMode, setLangMode]   = useState("te");
-  const [wLangMode, setWLangMode] = useState("te");
+  // CHECK localStorage on startup — restore session if user was already logged in
+  const getSavedScreen = () => {
+    const loggedIn = localStorage.getItem("niyoga_loggedIn");
+    const role = localStorage.getItem("niyoga_role");
+    if (loggedIn === "true" && role) {
+      return "main"; // skip landing, go straight to main app
+    }
+    return "landing"; // first time or logged out
+  };
+  const [screen, setScreen] = useState(getSavedScreen());
+  const [role, setRole] = useState(localStorage.getItem("niyoga_role") || null);
+  // RESTORE the last page — worker goes to jobs, contractor goes to dashboard
+  const getSavedPage = () => {
+    const role = localStorage.getItem("niyoga_role");
+    if (role === "worker") return "jobs";
+    if (role === "contractor") return "dashboard";
+    return "dashboard";
+  };
+  const [page, setPage] = useState(getSavedPage());
+  // SESSION HELPER — saves login state to localStorage
+  const saveSession = (role, lang, targetPage) => {
+    localStorage.setItem("niyoga_loggedIn", "true");
+    localStorage.setItem("niyoga_role", role);        // "worker" or "contractor"
+    localStorage.setItem("niyoga_lang", lang || "te"); // language code
+    localStorage.setItem("niyoga_page", targetPage);  // page to restore on reload
+    // Save profile data so it survives page reload
+    if (role === "worker") localStorage.setItem("niyoga_wProf", JSON.stringify(wProf));
+    if (role === "contractor") localStorage.setItem("niyoga_cProf", JSON.stringify(cProf));
+  };
+  // SESSION HELPER — clears login state from localStorage
+  const clearSession = () => {
+    localStorage.removeItem("niyoga_loggedIn");
+    localStorage.removeItem("niyoga_role");
+    localStorage.removeItem("niyoga_lang");
+    localStorage.removeItem("niyoga_page");
+    localStorage.removeItem("niyoga_wProf");
+    localStorage.removeItem("niyoga_cProf");
+  };
+  const [cProf, setCProf] = useState(() => {
+    try {
+      const saved = localStorage.getItem("niyoga_cProf");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [wProf, setWProf] = useState(() => {
+    try {
+      const saved = localStorage.getItem("niyoga_wProf");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  
+  // Keep profile data in sync with localStorage whenever it changes
+  useEffect(() => {
+    if (role === "worker" && wProf && Object.keys(wProf).length > 0) {
+      localStorage.setItem("niyoga_wProf", JSON.stringify(wProf));
+    }
+    if (role === "contractor" && cProf && Object.keys(cProf).length > 0) {
+      localStorage.setItem("niyoga_cProf", JSON.stringify(cProf));
+    }
+  }, [wProf, cProf, role]);
+  const [langMode, setLangMode]   = useState(localStorage.getItem("niyoga_lang") || "te");
+  const [wLangMode, setWLangMode] = useState(localStorage.getItem("niyoga_lang") || "te");
   const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Niyo assistant + job filter wiring — unchanged from original
@@ -2267,11 +2322,44 @@ export default function NiyogaX() {
   }, [jobFilter]);
 
   const handleAssistantNavigate = (path, filter) => {
+    // SAFETY CHECK — only navigate if user is already logged in
+    // If role is not set, the user is not logged in yet, so do nothing
+    if (!role) {
+      return;
+    }
+
     if (filter !== null && filter !== undefined) {
       setJobFilter(filter);
-      const pageMap = { "/": "home", "/jobs": "jobs", "/profile": "profile", "/dashboard": "dashboard", "/post-job": "post" };
-      if (["/jobs","/","/dashboard","/profile","/post-job"].includes(path)) setScreen("main");
-      if (pageMap[path]) setPage(pageMap[path]);
+    }
+
+    const pageMap = {
+      "/": "home",
+      "/jobs": "jobs",
+      "/profile": "profile",
+      "/dashboard": "dashboard",
+      "/post-job": "post"
+    };
+
+    // WORKER page guard — only show worker pages to workers
+    // CONTRACTOR page guard — only show contractor pages to contractors
+    const workerOnlyPages = ["jobs", "home", "profile"];
+    const contractorOnlyPages = ["home", "dashboard", "post", "workers", "profile"];
+
+    if (["/jobs", "/", "/dashboard", "/profile", "/post-job"].includes(path)) {
+      setScreen("main");
+    }
+
+    if (pageMap[path]) {
+      const targetPage = pageMap[path];
+      // Only navigate to a page that exists for the current role
+      if (role === "worker" && workerOnlyPages.includes(targetPage)) {
+        setPage(targetPage);
+      } else if (role === "contractor" && contractorOnlyPages.includes(targetPage)) {
+        setPage(targetPage);
+      } else if (targetPage === "home") {
+        // home exists for both roles
+        setPage("home");
+      }
     }
   };
 
@@ -2280,6 +2368,8 @@ export default function NiyogaX() {
   const wTx = T[wLangMode] || T.te;
 
   const reset = () => {
+    // CLEAR session from localStorage on logout
+    clearSession();
     stopSpeech();
     setScreen("landing"); setRole(null); setPage("dashboard");
     setCProf({}); setWProf({}); setLangMode("te"); setWLangMode("te");
@@ -2333,6 +2423,8 @@ export default function NiyogaX() {
           onBack={() => { stopSpeech(); setScreen("w_auth"); }}
           onDone={() => {
             if (wLangMode === "va") speak("స్వాగతం! లాగిన్ అయ్యారు.");
+            // SAVE worker session to localStorage
+            saveSession("worker", wLangMode || "te", "jobs");
             setPage("jobs"); setScreen("main");
           }}
         />
@@ -2342,6 +2434,8 @@ export default function NiyogaX() {
       {screen === "w_prof" && <WorkerProfile langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_reg"); }} onDone={profile => {
         setWProf(profile);
         speak("ప్రొఫైల్ పూర్తయింది! స్వాగతం!");
+        // SAVE worker session to localStorage
+        saveSession("worker", wLangMode || "te", "jobs");
         setPage("jobs"); setScreen("main");
       }} />}
 
@@ -2364,6 +2458,8 @@ export default function NiyogaX() {
           onBack={() => { stopSpeech(); setScreen("c_auth"); }}
           onDone={() => {
             if (langMode === "va") speak(T.va.cDoneSpeak);
+            // SAVE contractor session to localStorage
+            saveSession("contractor", langMode || "en", "dashboard");
             setPage("dashboard"); setScreen("main");
           }}
         />
@@ -2373,6 +2469,8 @@ export default function NiyogaX() {
       {screen === "c_prof" && <CProfile langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_reg"); }} onDone={d => {
         setCProf(d);
         if (langMode === "va") speak(T.va.cDoneSpeak);
+        // SAVE contractor session to localStorage
+        saveSession("contractor", langMode || "en", "dashboard");
         setPage("dashboard"); setScreen("main");
       }} />}
 
