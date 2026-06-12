@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import NiyoAssistant from './components/NiyoAssistant';
-import { JobFilterProvider, useJobFilter } from './hooks/useJobFilter.jsx';
+import { useJobFilter } from './hooks/useJobFilter.jsx';
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700;800;900&family=Noto+Sans+Telugu:wght@400;600;700&display=swap');
@@ -462,7 +462,7 @@ function SOS({ workerProfile, style }) {
   const close = () => { setModal(false); setStage("idle"); };
 
   return (
-    <>
+      <>
       {/* SOS trigger button — unchanged position/style */}
       <button
         onClick={openSOS}
@@ -1138,6 +1138,17 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
 function Jobs({ langMode = "te" }) {
   const isEn = langMode === "en";
   const [filter, setFilter] = useState("all");
+  // Connect Niyo assistant job filter to this component's filter state
+  const { jobFilter } = useJobFilter();
+  console.log('[Jobs] render', { jobFilter, filter });
+  useEffect(() => {
+    if (jobFilter) {
+      console.log('[Jobs] jobFilter effect', { jobFilter, filterBefore: filter });
+      // Match the filter value to the cat values used in the jobs array
+      // jobFilter comes in as "Painting", "Driving" etc — convert to lowercase to match cat values
+      setFilter(jobFilter.toLowerCase());
+    }
+  }, [jobFilter]);
   const { t, show } = useToast();
   useEffect(() => { if (langMode === "va") speakLater(isEn ? "Here are your nearby jobs" : "ఇవి మీ దగ్గరలో ఉన్న పనులు", 400); }, []);
   const jobs = [
@@ -1156,6 +1167,7 @@ function Jobs({ langMode = "te" }) {
     { id: "driving", l: isEn ? "Driving" : "డ్రైవింగ్", i: "🚗", en: "Driving" },
   ];
   const filtered = filter === "all" ? jobs : jobs.filter(j => j.cat === filter);
+  console.log('[Jobs] filtering', { filter, filteredLength: filtered.length });
   const jobText = j => {
     const type = isEn ? j.en : j.te;
     const loc = isEn ? j.enLoc : j.loc;
@@ -2322,6 +2334,7 @@ export default function NiyogaX() {
   }, [jobFilter]);
 
   const handleAssistantNavigate = (path, filter) => {
+    console.log('[NiyogaX] handleAssistantNavigate start', { path, filter });
     // SAFETY CHECK — only navigate if user is already logged in
     // If role is not set, the user is not logged in yet, so do nothing
     if (!role) {
@@ -2329,6 +2342,7 @@ export default function NiyogaX() {
     }
 
     if (filter !== null && filter !== undefined) {
+      console.log('[NiyogaX] handleAssistantNavigate setJobFilter', filter);
       setJobFilter(filter);
     }
 
@@ -2385,7 +2399,7 @@ export default function NiyogaX() {
   const tx = T[langMode] || T.te;
 
   return (
-    <>
+      <>
       <style>{CSS}</style>
       <div style={{ position: "fixed", inset: 0, background: "radial-gradient(ellipse at 20% 50%,rgba(255,140,0,.06),transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(34,197,94,.05),transparent 60%),#040d1a", zIndex: -1 }} />
       <Particles color={role === "contractor" ? "34,197,94" : "255,140,0"} />
@@ -2562,6 +2576,6 @@ export default function NiyogaX() {
       <Bot onCmd={r => { setRole(r); setScreen(r === "contractor" ? "c_lang" : "w_reg"); }} onOpenChange={setAssistantOpen} onNavigate={handleAssistantNavigate} />
       {/* SOS now receives worker profile so it can read emergencyContact */}
       <SOS workerProfile={role === "worker" ? wProf : null} style={assistantOpen ? { bottom: "90px", right: "80px" } : undefined} />
-    </>
+      </>
   );
 }

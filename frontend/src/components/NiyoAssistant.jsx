@@ -188,6 +188,74 @@ const styles = {
   }),
 };
 
+function _scoreVoice(v) {
+  const n = v.name.toLowerCase();
+  const l = (v.lang || '').toLowerCase();
+  let score = 0;
+  if (l === 'te-in') score += 100;
+  else if (l.startsWith('te')) score += 80;
+  else if (l === 'en-in') score += 20;
+  else if (l.startsWith('en')) score += 5;
+  if (/female|woman|girl/i.test(n)) score += 60;
+  if (/\bmale\b|\bman\b/i.test(n)) score -= 40;
+  if (/lekha|priya|kavya|suma|ananya|meera|nandini|sangeetha|rashmi|divya/i.test(n)) score += 30;
+  if (/google/i.test(n)) score += 20;
+  if (/neural|natural|enhanced/i.test(n)) score += 25;
+  if (/news|formal|ivona|espeak|festival|flite|mbrola/i.test(n)) score -= 30;
+  if (/microsoft/i.test(n)) score += 5;
+  if (!v.localService) score -= 5;
+  return score;
+}
+
+let _cv = null;
+
+function _bestVoice() {
+  if (_cv) return _cv;
+  const vs = window.speechSynthesis?.getVoices() || [];
+  if (!vs.length) return null;
+  const ranked = [...vs].sort((a, b) => _scoreVoice(b) - _scoreVoice(a));
+  _cv = ranked[0] || null;
+  return _cv;
+}
+
+function _ensureVoices(cb) {
+  const vs = window.speechSynthesis?.getVoices() || [];
+  if (vs.length) { cb(); return; }
+  window.speechSynthesis.addEventListener('voiceschanged', () => {
+    _cv = null;
+    cb();
+  }, { once: true });
+}
+
+function _addNaturalPauses(text) {
+  return text
+    .replace(/([।!?])\s+/g, '$1  ')
+    .replace(/([,،])\s+/g, '$1 ');
+}
+
+function speakReply(text, lang = 'te-IN') {
+  if (!window.speechSynthesis || !text) return;
+  window.speechSynthesis.cancel();
+
+  const prepared = _addNaturalPauses(text);
+  const _doSpeak = () => {
+    const u = new SpeechSynthesisUtterance(prepared);
+    u.lang = lang;
+    u.rate = 0.82;
+    u.pitch = 1.12;
+    u.volume = 0.95;
+    const v = _bestVoice();
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+  };
+  _ensureVoices(_doSpeak);
+}
+
+function speakReplyLater(text, ms = 400) {
+  const id = setTimeout(() => speakReply(text), ms);
+  return () => clearTimeout(id);
+}
+
 // ─── Pulse animation (injected once) ─────────────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('niyo-pulse-style')) {
   const styleEl = document.createElement('style');
@@ -224,7 +292,7 @@ export default function NiyoAssistant({ isOpen, onClose, onNavigate }) {
       setHasGreeted(true);
       addMessage('niyo', GREETING_REPLY);
       // Small delay so the panel animation finishes before speaking
-      setTimeout(() => voiceService.speak(GREETING_REPLY), 400);
+      setTimeout(() => speakReply(GREETING_REPLY), 400);
     }
     // Stop listening when panel closes
     if (!isOpen) {
@@ -244,7 +312,7 @@ export default function NiyoAssistant({ isOpen, onClose, onNavigate }) {
     speechRecognitionService.onError  = (errMsg) => {
       setListening(false);
       addMessage('niyo', errMsg);
-      voiceService.speak(errMsg);
+      speakReply(errMsg);
     };
     // Cleanup on unmount
     return () => {
@@ -264,14 +332,14 @@ export default function NiyoAssistant({ isOpen, onClose, onNavigate }) {
 
   // ─── Core: process any input (voice transcript or typed text) ──────────────
 
-  const processInput = useCallback((text) => {
+  const processInput = useCallback(async (text) => {
     if (!text.trim()) return;
 
     // 1. Show user's message in chat
     addMessage('user', text);
 
     // 2. Determine intent
-    const intent = handleInput(text);
+    const intent = await handleInput(text);
 
     if (intent.type === 'action') {
       // ── ACTION MODE ──
@@ -279,14 +347,16 @@ export default function NiyoAssistant({ isOpen, onClose, onNavigate }) {
 
       // 3a. Show + speak the confirmation
       addMessage('niyo', reply);
-      voiceService.speak(reply);
+      speakReply(reply);
 
       // 3b. Perform the navigation after a short delay (let speech start)
       setTimeout(() => {
         if (action.type === 'navigate_jobs') {
+          console.log('[NiyoAssistant] handleAssistantNavigate call', { path: '/jobs', filter: action.filter });
           // Navigate to jobs page and apply filter
           onNavigate?.('/jobs', action.filter);
         } else if (action.type === 'navigate_page') {
+          console.log('[NiyoAssistant] handleAssistantNavigate call', { path: action.path, filter: null });
           onNavigate?.(action.path, null);
         }
 
@@ -298,7 +368,7 @@ export default function NiyoAssistant({ isOpen, onClose, onNavigate }) {
       // ── CONVERSATION MODE ──
       const { reply } = intent;
       addMessage('niyo', reply);
-      voiceService.speak(reply);
+      speakReply(reply);
       // Panel stays open — user can continue the conversation
     }
   }, [addMessage, onNavigate, onClose]);
