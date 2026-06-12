@@ -2,3 +2,9 @@ niyo_env/
 __pycache__/
 db.sqlite3
 *.pyc
+niyo_env/
+venv/
+backend/venv/
+__pycache__/
+db.sqlite3
+*.pyc

@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import NiyoAssistant from './components/NiyoAssistant';
 import { JobFilterProvider, useJobFilter } from './hooks/useJobFilter.jsx';
+import { sendOtp, verifyOtp } from "./api/auth";
+import axios from "axios";
+
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700;800;900&family=Noto+Sans+Telugu:wght@400;600;700&display=swap');
@@ -773,7 +776,7 @@ function RoleSelect({ onSelect, onBack }) {
 }
 
 /* ── WORKER REGISTRATION ── */
-function WorkerReg({ langMode = "te", onDone, onBack }) {
+function WorkerReg({ langMode = "te", onDone, onBack, setWorkerPhone }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va";
   const isEn = langMode === "en";
@@ -841,16 +844,95 @@ function WorkerReg({ langMode = "te", onDone, onBack }) {
       <Mic onResult={tx => { if (va) speak("మీ వాయిస్ నమోదు అయింది. మీ నమోదు పూర్తైంది!"); setTimeout(onDone, 1600); }} size={68} />
     </div>
   </Card>;
-  return <Card title="ఫోన్ నమోదు" sub="Phone OTP" onBack={() => setStep(0)}>
-    {!sent ? <>
-      <Field label="ఫోన్ నంబర్" sub="Phone" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" />
-      <Btn onClick={() => { setSent(true); if (va) speak("OTP పంపబడింది. దయచేసి నమోదు చేయండి."); }} disabled={!phone}>OTP పంపు →</Btn>
-    </> : <>
-      <div style={{ color: "#22c55e", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>✅ OTP {phone} కి పంపబడింది</div>
-      <Field label="OTP నమోదు" sub="Enter OTP" value={otp} onChange={setOtp} type="number" ph="______" />
-      <Btn onClick={() => { if (va) speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 500); }} color="#22c55e">ధృవీకరించు ✓</Btn>
-    </>}
-  </Card>;
+
+  const doSend = async () => {
+  console.log("🔥 SEND OTP CLICKED");  // IMPORTANT TEST
+
+  try {
+    const res = await sendOtp(phone);
+    console.log("RESPONSE:", res);
+    setSent(true); 
+  } catch (err) {
+    console.log("ERROR:", err);
+  }
+ };
+ const doLogin = async () => {
+  try {
+    const res = await verifyOtp(phone, otp);
+
+    if (res.data.verified) {
+      alert("OTP Verified Successfully");
+      setWorkerPhone(phone);  // Store phone in parent state
+      onDone();
+      // 👉 LOGIN SUCCESS ACTION
+      console.log("LOGIN SUCCESS");
+
+      // optional: redirect or store login state
+      // localStorage.setItem("user", phone);
+
+    } else {
+      alert("Invalid OTP");
+    }
+
+  } catch (err) {
+    alert("Verification failed");
+  }
+  };
+
+  return (
+  <Card title="ఫోన్ నమోదు" sub="Phone OTP" onBack={() => setStep(0)}>
+
+    {!sent ? (
+      <>
+        <Field
+          label="ఫోన్ నంబర్"
+          sub="Phone"
+          value={phone}
+          onChange={setPhone}
+          type="tel"
+          ph="9XXXXXXXXX"
+        />
+
+        <Btn
+          onClick={doSend}   // 🔥 FIXED HERE
+          disabled={!phone}
+        >
+          OTP పంపు →
+        </Btn>
+      </>
+    ) : (
+      <>
+        <div style={{
+          color: "#22c55e",
+          fontSize: 13,
+          fontFamily: "'Noto Sans Telugu',sans-serif",
+          marginBottom: 18,
+          textAlign: "center"
+        }}>
+          ✅ OTP {phone} కి పంపబడింది
+        </div>
+
+        <Field
+          label="OTP నమోదు"
+          sub="Enter OTP"
+          value={otp}
+          onChange={setOtp}
+          type="number"
+          ph="______"
+        />
+
+        <Btn
+          onClick={doLogin}   // 🔥 FIXED HERE
+          color="#22c55e"
+          disabled={!otp}
+        >
+          ధృవీకరించు ✓
+        </Btn>
+      </>
+    )}
+
+  </Card>
+  );
 }
 
 /* ── WORKER PROFILE WRAP (standalone — must NOT be defined inside WorkerProfile
@@ -944,6 +1026,7 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
       // Future-ready hook: add backend dispatch here
       // _sosDispatch: { channel: "sms", endpoint: "/api/sos/notify" }
     };
+    console.log("Final profile:", profile);  // IMPORTANT TEST
     if (va) speak("అభినందనలు! మీ ప్రొఫైల్ పూర్తయింది.");
     setTimeout(() => onDone(profile), 700);
   };
@@ -1252,7 +1335,7 @@ function CLang({ onSelect, onBack, workerMode = false }) {
 }
 
 /* ── CONTRACTOR REGISTRATION ── */
-function CReg({ onDone, onBack, langMode = "te" }) {
+function CReg({ onDone, onBack, langMode = "te", setContractorPhone}) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va"; // voice assisted?
   const [step, setStep] = useState(0); const [method, setMethod] = useState(null);
@@ -1301,16 +1384,94 @@ function CReg({ onDone, onBack, langMode = "te" }) {
       <Mic onResult={tx2 => { if (va) speak(tx2 + ". " + tx.voiceDoneMsg); setTimeout(onDone, 1500); }} size={68} color="#22c55e" />
     </div>
   </Card>;
-  return <Card title={tx.phoneTitle} sub="OTP" onBack={() => setStep(0)} ac="#22c55e">
-    {!sent ? <>
-      <Field label={tx.phoneLabel} sub="Primary" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" ac="#22c55e" />
-      <Btn onClick={() => { setSent(true); if (va) speak(tx.otpSentSpeak); }} color="#22c55e" disabled={!phone}>{tx.phoneSend}</Btn>
-    </> : <>
-      <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 16, textAlign: "center", fontFamily: "'Noto Sans Telugu',sans-serif" }}>{tx.otpSent(phone)}</div>
-      <Field label={tx.otpLabel} sub="OTP" value={otp} onChange={setOtp} type="number" ph="______" ac="#22c55e" />
-      <Btn onClick={() => { if (va) speak(tx.regDone); setTimeout(onDone, 500); }} color="#22c55e">{tx.otpVerify}</Btn>
-    </>}
-  </Card>;
+  const doSend = async () => {
+  console.log("🔥 SEND OTP CLICKED");  // IMPORTANT TEST
+
+  try {
+    const res = await sendOtp(phone);
+    console.log("RESPONSE:", res);
+    setSent(true); 
+  } catch (err) {
+    console.log("ERROR:", err);
+  }
+ };
+ const doLogin = async () => {
+  try {
+  const res = await verifyOtp(phone, otp);
+
+  console.log("VERIFY RESPONSE:", res.data);
+
+  if (res.data.verified) {
+    alert("OTP Verified Successfully");
+
+    console.log("Before setContractorPhone");
+
+    setContractorPhone(phone);
+
+    console.log("After setContractorPhone");
+
+    onDone();
+  }
+} catch (err) {
+  console.log("VERIFY ERROR:", err);
+  alert("Verification failed");
+}
+  };
+
+  return (
+  <Card title="ఫోన్ నమోదు" sub="Phone OTP" onBack={() => setStep(0)}>
+
+    {!sent ? (
+      <>
+        <Field
+          label="ఫోన్ నంబర్"
+          sub="Phone"
+          value={phone}
+          onChange={setPhone}
+          type="tel"
+          ph="9XXXXXXXXX"
+        />
+
+        <Btn
+          onClick={doSend}   // 🔥 FIXED HERE
+          disabled={!phone}
+        >
+          OTP పంపు →
+        </Btn>
+      </>
+    ) : (
+      <>
+        <div style={{
+          color: "#22c55e",
+          fontSize: 13,
+          fontFamily: "'Noto Sans Telugu',sans-serif",
+          marginBottom: 18,
+          textAlign: "center"
+        }}>
+          ✅ OTP {phone} కి పంపబడింది
+        </div>
+
+        <Field
+          label="OTP నమోదు"
+          sub="Enter OTP"
+          value={otp}
+          onChange={setOtp}
+          type="number"
+          ph="______"
+        />
+
+        <Btn
+          onClick={doLogin}   // 🔥 FIXED HERE
+          color="#22c55e"
+          disabled={!otp}
+        >
+          ధృవీకరించు ✓
+        </Btn>
+      </>
+    )}
+
+  </Card>
+  );
 }
 
 /* ── CONTRACTOR PROFILE (voice auto-advance) ── */
@@ -2003,7 +2164,6 @@ function AuthChoice({ role, langMode = "te", onRegister, onLogin, onBack }) {
       onClick: () => { stopSpeech(); onLogin(); },
     },
   ];
-
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
       <Toast {...t} />
@@ -2067,17 +2227,6 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
     if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
   }, [step]);
 
-  const doSend = () => {
-    if (!phone) return;
-    setSent(true);
-    if (va) speak("OTP పంపబడింది");
-  };
-
-  const doLogin = () => {
-    if (!otp) return;
-    if (va) speak("స్వాగతం! లాగిన్ అయ్యారు.");
-    setTimeout(onDone, 600);
-  };
 
   // Method chooser UI
   if (step === 0) return (
@@ -2118,6 +2267,54 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
     </Card>
   );
 
+  
+  const doSend = async () => {
+  console.log("🔥 SEND OTP CLICKED");  // IMPORTANT TEST
+
+  try {
+    const res = await sendOtp(phone);
+    console.log("RESPONSE:", res);
+    setSent(true);
+  } catch (err) {
+    console.log("ERROR:", err);
+  }
+ };
+
+ const doLogin = async () => {
+  try {
+    const res = await verifyOtp(phone, otp);
+
+    console.log("VERIFY RESPONSE:", res.data);
+
+    if (!res.data.verified) {
+      alert("Invalid OTP");
+      return;
+    }
+
+    alert("OTP Verified Successfully");
+
+    // NOW check if user exists in DB
+    const loginRes = await axios.post(
+      "http://127.0.0.1:8000/api/accounts/check-worker/",
+      { phone }
+    );
+
+    console.log("CHECK WORKER:", loginRes.data);
+
+    if (!loginRes.data.exists) {
+      alert("User not registered");
+      return;
+    }
+
+    // ONLY HERE go to dashboard
+    onDone();
+    // setScreen("main");
+
+  } catch (err) {
+    console.error(err);
+    alert("Verification failed");
+  }
+  };
   // phone method (reuse OTP flow)
   return (
     <Card title={heading} sub={isEn ? "Phone OTP" : "ఫోన్ OTP"} onBack={() => { setStep(0); }} ac="#ff8c00">
@@ -2171,16 +2368,75 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
     if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
   }, [step]);
 
-  const doSend = () => {
-    if (!phone) return;
+  const doSend = async () => {
+  if (!phone) return;
+
+  try {
+    await axios.post(
+      "http://127.0.0.1:8000/api/accounts/send-otp/",
+      {
+        phone
+      }
+    );
+
     setSent(true);
+
     if (va) speak("OTP పంపబడింది");
+
+    alert("OTP sent successfully");
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to send OTP");
+  }
   };
 
-  const doLogin = () => {
-    if (!otp) return;
+  const doLogin = async () => {
+  if (!otp || !phone) return;
+
+  try {
+    // 1. Verify OTP
+    const res = await axios.post(
+      "http://127.0.0.1:8000/api/accounts/verify-otp/",
+      {
+        phone,
+        otp
+      }
+    );
+
+    console.log("VERIFY RESPONSE:", res.data);
+
+    if (!res.data.verified) {
+      alert("Invalid OTP");
+      return;
+    }
+
+    // 2. Check contractor exists
+    const loginRes = await axios.post(
+      "http://127.0.0.1:8000/api/accounts/check-contractor/",
+      {
+        phone
+      }
+    );
+
+    console.log("CHECK CONTRACTOR:", loginRes.data);
+
+    if (!loginRes.data.exists) {
+      alert("Contractor not registered");
+      return;
+    }
+
+    // 3. SUCCESS LOGIN
+    alert("Contractor Login Success");
+
     if (va) speak("స్వాగతం! కాంట్రాక్టర్ లాగిన్ అయ్యారు.");
-    setTimeout(onDone, 600);
+
+    setTimeout(onDone, 500);
+
+  } catch (err) {
+    console.error(err);  
+    alert("Login failed");
+  }
   };
 
   if (step === 0) return (
@@ -2383,7 +2639,8 @@ export default function NiyogaX() {
   };
 
   const tx = T[langMode] || T.te;
-
+  const [workerPhone, setWorkerPhone] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
   return (
     <>
       <style>{CSS}</style>
@@ -2430,14 +2687,40 @@ export default function NiyogaX() {
         />
       )}
       {/* Existing worker registration — UNCHANGED */}
-      {screen === "w_reg"  && <WorkerReg langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_auth"); }} onDone={() => setScreen("w_prof")} />}
-      {screen === "w_prof" && <WorkerProfile langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_reg"); }} onDone={profile => {
-        setWProf(profile);
-        speak("ప్రొఫైల్ పూర్తయింది! స్వాగతం!");
-        // SAVE worker session to localStorage
-        saveSession("worker", wLangMode || "te", "jobs");
-        setPage("jobs"); setScreen("main");
-      }} />}
+      {screen === "w_reg"  && <WorkerReg langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_auth"); }} onDone={() => setScreen("w_prof")} setWorkerPhone={setWorkerPhone}/>}
+      {screen === "w_prof" && <WorkerProfile langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_reg"); }}  
+      onDone={async (profile) => {
+        console.log("axios is running")
+  try {
+    await axios.post(
+      "http://127.0.0.1:8000/api/accounts/register-worker/",
+      {
+        phone: workerPhone, // verified phone number
+        language: wLangMode,
+        ...profile,
+      }
+    );
+    console.log(profile);
+    alert("Registration Completed");
+    
+    setWProf(profile);
+    // saveSession("worker", wLangMode || "te", "jobs");
+    // setPage("jobs");
+    setScreen("main");
+
+  } catch (err) {
+     const msg = err.response?.data?.error;
+
+  if (msg) {
+    alert(msg);   // 👈 THIS WILL SHOW "User already registered"
+  } else {
+    alert("Something went wrong");
+  }
+
+  console.log(err.response?.data);
+  }
+    }}
+     />}
 
       {/* ── CONTRACTOR FLOW — all existing screens UNCHANGED ── */}
       {screen === "c_lang" && <CLang onBack={() => { stopSpeech(); setScreen("role"); }} onSelect={m => { setLangMode(m); setScreen("c_auth"); }} />}
@@ -2465,15 +2748,44 @@ export default function NiyogaX() {
         />
       )}
       {/* Existing contractor registration — UNCHANGED */}
-      {screen === "c_reg"  && <CReg   langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_auth"); }} onDone={() => setScreen("c_prof")} />}
-      {screen === "c_prof" && <CProfile langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_reg"); }} onDone={d => {
-        setCProf(d);
-        if (langMode === "va") speak(T.va.cDoneSpeak);
-        // SAVE contractor session to localStorage
-        saveSession("contractor", langMode || "en", "dashboard");
-        setPage("dashboard"); setScreen("main");
-      }} />}
+      {screen === "c_reg"  && <CReg   langMode={langMode} setContractorPhone={setContractorPhone} onBack={() => { stopSpeech(); setScreen("c_auth"); }} onDone={() => setScreen("c_prof")} />}
+      {screen === "c_prof" && (
+  <CProfile
+    langMode={langMode}
+    onBack={() => {
+      stopSpeech();
+      setScreen("c_reg");
+    }}
+    onDone={async (profile) => {
+      console.log("CONTRACTOR DATA:", profile);
 
+      try {
+        const res = await axios.post(
+          "http://127.0.0.1:8000/api/accounts/register-contractor/",
+          {
+            phone: contractorPhone,
+            language: langMode,
+            ...profile,
+          }
+        );
+
+        console.log(res.data);
+
+        setCProf(profile);
+
+        saveSession("contractor", langMode || "en", "dashboard");
+
+        setPage("dashboard");
+        setScreen("main");
+
+      } catch (err) {
+      console.log("FULL ERROR:", err);
+      console.log("RESPONSE:", err.response);
+      console.log("DATA:", err.response?.data);
+}
+    }}
+      />
+       )}
       {/* Worker main */}
       {screen === "main" && role === "worker" && page === "jobs"    && <Jobs langMode={wLangMode} />}
       {screen === "main" && role === "worker" && page === "home"    && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", textAlign: "center", padding: 40 }}>
