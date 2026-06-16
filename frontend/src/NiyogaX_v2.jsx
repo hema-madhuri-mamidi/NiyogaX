@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import NiyoAssistant from './components/NiyoAssistant';
 import { useJobFilter } from './hooks/useJobFilter.jsx';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700;800;900&family=Noto+Sans+Telugu:wght@400;600;700&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -773,7 +775,7 @@ function RoleSelect({ onSelect, onBack }) {
 }
 
 /* ── WORKER REGISTRATION ── */
-function WorkerReg({ langMode = "te", onDone, onBack }) {
+function WorkerReg({ langMode = "te", onDone, onBack, setWorkerPhone }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va";
   const isEn = langMode === "en";
@@ -804,6 +806,48 @@ function WorkerReg({ langMode = "te", onDone, onBack }) {
       speak("మళ్ళీ చెప్పండి — face, voice లేదా phone?");
     }
   };
+
+  const doSend = async () => {
+    if (!phone) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.log("SEND OTP failed", data);
+        return;
+      }
+      setSent(true);
+      if (va) speak("OTP పంపబడింది. దయచేసి నమోదు చేయండి.");
+    } catch (err) {
+      console.log("SEND OTP error", err);
+    }
+  };
+
+  const doLogin = async () => {
+    if (!otp) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.verified) {
+        alert("Invalid OTP");
+        return;
+      }
+      if (setWorkerPhone) setWorkerPhone(phone);
+      if (va) speak("మీ నమోదు పూర్తైంది");
+      setTimeout(onDone, 500);
+    } catch (err) {
+      alert("Unable to verify OTP");
+    }
+  };
+
   if (step === 0) return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
     <Toast {...t} /><Back onClick={onBack} />
     <div style={{ textAlign: "center", marginBottom: 44 }}>
@@ -844,11 +888,11 @@ function WorkerReg({ langMode = "te", onDone, onBack }) {
   return <Card title="ఫోన్ నమోదు" sub="Phone OTP" onBack={() => setStep(0)}>
     {!sent ? <>
       <Field label="ఫోన్ నంబర్" sub="Phone" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" />
-      <Btn onClick={() => { setSent(true); if (va) speak("OTP పంపబడింది. దయచేసి నమోదు చేయండి."); }} disabled={!phone}>OTP పంపు →</Btn>
+      <Btn onClick={doSend} disabled={!phone}>OTP పంపు →</Btn>
     </> : <>
       <div style={{ color: "#22c55e", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>✅ OTP {phone} కి పంపబడింది</div>
       <Field label="OTP నమోదు" sub="Enter OTP" value={otp} onChange={setOtp} type="number" ph="______" />
-      <Btn onClick={() => { if (va) speak("మీ నమోదు పూర్తైంది"); setTimeout(onDone, 500); }} color="#22c55e">ధృవీకరించు ✓</Btn>
+      <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{isEn ? "Verify OTP" : "ధృవీకరించు ✓"}</Btn>
     </>}
   </Card>;
 }
@@ -1264,7 +1308,7 @@ function CLang({ onSelect, onBack, workerMode = false }) {
 }
 
 /* ── CONTRACTOR REGISTRATION ── */
-function CReg({ onDone, onBack, langMode = "te" }) {
+function CReg({ onDone, onBack, langMode = "te", setContractorPhone }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va"; // voice assisted?
   const [step, setStep] = useState(0); const [method, setMethod] = useState(null);
@@ -1278,6 +1322,48 @@ function CReg({ onDone, onBack, langMode = "te" }) {
     else if (l.includes("phone") || l.includes("ఫోన్")) { show("✓ " + tx.phone, "#22c55e"); setTimeout(() => { setMethod("phone"); setStep(1); }, 700); }
     else if (va) speak("మళ్ళీ చెప్పండి");
   };
+
+  const doSend = async () => {
+    if (!phone) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.log("SEND OTP failed", data);
+        return;
+      }
+      setSent(true);
+      if (va) speak(tx.otpSentSpeak);
+    } catch (err) {
+      console.log("SEND OTP error", err);
+    }
+  };
+
+  const doLogin = async () => {
+    if (!otp) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.verified) {
+        alert("Invalid OTP");
+        return;
+      }
+      if (setContractorPhone) setContractorPhone(phone);
+      if (va) speak(tx.regDone);
+      setTimeout(onDone, 500);
+    } catch (err) {
+      alert("Unable to verify OTP");
+    }
+  };
+
   if (step === 0) return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px 40px", position: "relative", zIndex: 2 }}>
     <Toast {...t} /><Back onClick={onBack} />
     <div style={{ textAlign: "center", marginBottom: 42 }}>
@@ -1316,11 +1402,11 @@ function CReg({ onDone, onBack, langMode = "te" }) {
   return <Card title={tx.phoneTitle} sub="OTP" onBack={() => setStep(0)} ac="#22c55e">
     {!sent ? <>
       <Field label={tx.phoneLabel} sub="Primary" value={phone} onChange={setPhone} type="tel" ph="9XXXXXXXXX" ac="#22c55e" />
-      <Btn onClick={() => { setSent(true); if (va) speak(tx.otpSentSpeak); }} color="#22c55e" disabled={!phone}>{tx.phoneSend}</Btn>
+      <Btn onClick={doSend} color="#22c55e" disabled={!phone}>{tx.phoneSend}</Btn>
     </> : <>
       <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 16, textAlign: "center", fontFamily: "'Noto Sans Telugu',sans-serif" }}>{tx.otpSent(phone)}</div>
       <Field label={tx.otpLabel} sub="OTP" value={otp} onChange={setOtp} type="number" ph="______" ac="#22c55e" />
-      <Btn onClick={() => { if (va) speak(tx.regDone); setTimeout(onDone, 500); }} color="#22c55e">{tx.otpVerify}</Btn>
+      <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{tx.otpVerify}</Btn>
     </>}
   </Card>;
 }
@@ -2065,6 +2151,8 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
   const [phone, setPhone]   = useState("");
   const [otp,   setOtp]     = useState("");
   const [sent,  setSent]    = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState("");
   const [step, setStep]     = useState(0); // 0: choose method, 1: method flow
   const [method, setMethod] = useState(null); // 'face'|'voice'|'phone'
 
@@ -2079,16 +2167,56 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
     if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
   }, [step]);
 
-  const doSend = () => {
+  const doSend = async () => {
     if (!phone) return;
-    setSent(true);
-    if (va) speak("OTP పంపబడింది");
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "Failed to send OTP");
+        return;
+      }
+      setSent(true);
+      if (va) speak("OTP పంపబడింది");
+    } catch (err) {
+      setError("Unable to send OTP");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const doLogin = () => {
+  const doLogin = async () => {
     if (!otp) return;
-    if (va) speak("స్వాగతం! లాగిన్ అయ్యారు.");
-    setTimeout(onDone, 600);
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "OTP verification failed");
+        return;
+      }
+      if (data?.verified) {
+        if (va) speak("స్వాగతం! లాగిన్ అయ్యారు.");
+        setTimeout(onDone, 600);
+      } else {
+        setError("OTP verification failed");
+      }
+    } catch (err) {
+      setError("Unable to verify OTP");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Method chooser UI
@@ -2141,7 +2269,8 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
               <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n.length >= 10) { setPhone(n); speak("నంబర్ నమోదు అయింది"); } }} size={46} color="#ff8c00" />
             </div>
           )}
-          <Btn onClick={doSend} color="#ff8c00" disabled={!phone}>{sendBtn}</Btn>
+          <Btn onClick={doSend} color="#ff8c00" disabled={!phone || loading}>{loading ? "Sending..." : sendBtn}</Btn>
+          {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
         </>
       ) : (
         <>
@@ -2152,7 +2281,8 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
               <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n) { setOtp(n); speak("OTP నమోదు అయింది"); } }} size={46} color="#ff8c00" />
             </div>
           )}
-          <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{verBtn}</Btn>
+          <Btn onClick={doLogin} color="#22c55e" disabled={!otp || loading}>{loading ? "Verifying..." : verBtn}</Btn>
+          {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
         </>
       )}
     </Card>
@@ -2169,6 +2299,8 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
   const [phone, setPhone]   = useState("");
   const [otp,   setOtp]     = useState("");
   const [sent,  setSent]    = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState("");
   const [step, setStep]     = useState(0);
   const [method, setMethod] = useState(null);
 
@@ -2183,16 +2315,56 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
     if (va && step === 0) return speakLater("మీ ఫోన్ నంబర్ చెప్పండి", 350);
   }, [step]);
 
-  const doSend = () => {
+  const doSend = async () => {
     if (!phone) return;
-    setSent(true);
-    if (va) speak("OTP పంపబడింది");
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "Failed to send OTP");
+        return;
+      }
+      setSent(true);
+      if (va) speak("OTP పంపబడింది");
+    } catch (err) {
+      setError("Unable to send OTP");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const doLogin = () => {
+  const doLogin = async () => {
     if (!otp) return;
-    if (va) speak("స్వాగతం! కాంట్రాక్టర్ లాగిన్ అయ్యారు.");
-    setTimeout(onDone, 600);
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "OTP verification failed");
+        return;
+      }
+      if (data?.verified) {
+        if (va) speak("స్వాగతం! కాంట్రాక్టర్ లాగిన్ అయ్యారు.");
+        setTimeout(onDone, 600);
+      } else {
+        setError("OTP verification failed");
+      }
+    } catch (err) {
+      setError("Unable to verify OTP");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (step === 0) return (
@@ -2241,7 +2413,8 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
               <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n.length >= 10) { setPhone(n); speak("నంబర్ నమోదు అయింది"); } }} size={46} color="#22c55e" />
             </div>
           )}
-          <Btn onClick={doSend} color="#22c55e" disabled={!phone}>{sendBtn}</Btn>
+          <Btn onClick={doSend} color="#22c55e" disabled={!phone || loading}>{loading ? "Sending..." : sendBtn}</Btn>
+          {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
         </>
       ) : (
         <>
@@ -2252,7 +2425,8 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
               <Mic onResult={t => { const n = t.replace(/\D/g, ""); if (n) { setOtp(n); speak("OTP నమోదు అయింది"); } }} size={46} color="#22c55e" />
             </div>
           )}
-          <Btn onClick={doLogin} color="#22c55e" disabled={!otp}>{verBtn}</Btn>
+          <Btn onClick={doLogin} color="#22c55e" disabled={!otp || loading}>{loading ? "Verifying..." : verBtn}</Btn>
+          {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
         </>
       )}
     </Card>
