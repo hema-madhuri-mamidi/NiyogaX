@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import send_otp, verify_otp,register_worker, register_contractor,check_worker, check_contractor
+from .views import send_otp, verify_otp, register_worker, register_contractor, check_worker, check_contractor, get_worker_profile, get_profile
 
 urlpatterns = [
     path("send-otp/", send_otp),
@@ -8,4 +8,6 @@ urlpatterns = [
     path("register-contractor/", register_contractor),
     path("check-worker/", check_worker),
     path("check-contractor/", check_contractor),
+    path("get-worker-profile/", get_worker_profile),
+    path("profile/", get_profile),
 ]

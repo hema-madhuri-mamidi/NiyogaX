@@ -933,10 +933,12 @@ function WorkerProfileWrap({ children, onBack, currentStepNum, totalSteps, prog 
    SOS reads profile.emergencyContact to simulate notification.
    Future: replace the simulated dispatch in SOS with real SMS/WhatsApp/push call.
 ── */
-function WorkerProfile({ langMode = "te", onDone, onBack }) {
+function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
   const va = langMode === "va";
   const isEn = langMode === "en";
   const d = (te, en) => isEn ? en : te;
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   // ── Phase A: core profile questions ──────────────────────────────
   const coreQs = [
     { id: "name",     te: "మీ పేరు ఏమిటి?",          en: "Your name?",          icon: "👤", type: "text"   },
@@ -979,8 +981,8 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
   };
   const vrCore = t => { setVal(t); if (va) speak(t + ". సరే!"); setTimeout(() => advCore(t), 900); };
 
-  // Finish — build full profile and call onDone
-  const finish = (ec) => {
+  // Finish — build full profile, register with backend if possible, then call onDone
+  const finish = async (ec) => {
     const profile = {
       ...ans,
       gender,
@@ -988,8 +990,49 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
       // Future-ready hook: add backend dispatch here
       // _sosDispatch: { channel: "sms", endpoint: "/api/sos/notify" }
     };
-    if (va) speak("అభినందనలు! మీ ప్రొఫైల్ పూర్తయింది.");
-    setTimeout(() => onDone(profile), 700);
+
+    if (!phone) {
+      const message = "Phone number is required to register a worker account.";
+      setError(message);
+      if (va) speak("ఫోన్ నంబర్ అవసరం. ఖాతా కోసం ఫోన్ అవసరం.");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/register-worker/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          name: ans.name,
+          age: ans.age,
+          workType: ans.workType,
+          location: ans.location,
+          exp: ans.exp,
+          wage: ans.wage,
+          gender,
+          emergencyPhone: ec?.phone || "",
+          language: langMode === "va" ? "te" : langMode,
+        })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "Registration failed. Please try again.");
+        return;
+      }
+      if (!(data?.success || data?.message)) {
+        setError(data?.error || "Registration failed. Please try again.");
+        return;
+      }
+      if (va) speak("అభినందనలు! మీ ప్రొఫైల్ పూర్తయింది.");
+      setTimeout(() => onDone(profile, data?.token || null), 700);
+    } catch (err) {
+      setError("Unable to register. Check your network and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── TOTAL STEPS for progress bar ─────────────────────────────────
@@ -1097,11 +1140,12 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
           style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: "linear-gradient(135deg,#ff8c00,#ff6b00)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
           {d('➕ సంప్రదింపు జోడించు', '➕ Add contact')}
         </button>
-        <button onClick={() => finish(null)}
-          style={{ width: "100%", padding: "13px", borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "none", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
-          {d('దాటవేయి →', 'Skip →')}
+        <button onClick={() => finish(null)} disabled={loading}
+          style={{ width: "100%", padding: "13px", borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "none", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Rajdhani',sans-serif" }}>
+          {loading ? (isEn ? 'Processing...' : 'ప్రాసెస్ చేస్తున్నాం...') : d('దాటవేయి →', 'Skip →')}
         </button>
       </div>
+      {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
     </WorkerProfileWrap>
   );
 
@@ -1167,11 +1211,12 @@ function WorkerProfile({ langMode = "te", onDone, onBack }) {
           <Mic onResult={t => { const n = t.replace(/\D/g, ""); setEcPhone(n); if (va) speak("నంబర్ నమోదు అయింది"); setTimeout(() => finish({ name: ecName, phone: n }), 900); }} size={46} />
         </div>
         <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>{d('🎤 వాయిస్ లో చెప్పితే స్వయంగా వెళ్ళిపోతుంది', '🎤 Speak it to move on automatically')}</div>
-        <button onClick={() => finish({ name: ecName, phone: ecPhone })} disabled={!ecPhone}
-          style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: ecPhone ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.08)", color: ecPhone ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: ecPhone ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
-          {d('పూర్తి చేయండి ✓', 'Complete ✓')}
+        <button onClick={() => finish({ name: ecName, phone: ecPhone })} disabled={!ecPhone || loading}
+          style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: (ecPhone && !loading) ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.08)", color: (ecPhone && !loading) ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: (!ecPhone || loading) ? "not-allowed" : "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
+          {loading ? (isEn ? 'Processing...' : 'ప్రాసెస్ చేస్తున్నాం...') : d('పూర్తి చేయండి ✓', 'Complete ✓')}
         </button>
       </div>
+      {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
     </WorkerProfileWrap>
   );
 
@@ -1412,9 +1457,11 @@ function CReg({ onDone, onBack, langMode = "te", setContractorPhone }) {
 }
 
 /* ── CONTRACTOR PROFILE (voice auto-advance) ── */
-function CProfile({ onDone, onBack, langMode = "te" }) {
+function CProfile({ phone, onDone, onBack, langMode = "te" }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va";
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const qs = [
     { id: "name",     te: "మీ పేరు ఏమిటి?",                en: "Your name?",              icon: "👤", type: "text"   },
     { id: "company",  te: "మీ కంపెనీ పేరు?",               en: "Company name?",            icon: "🏢", type: "text"   },
@@ -1430,8 +1477,12 @@ function CProfile({ onDone, onBack, langMode = "te" }) {
   useEffect(() => { if (va && q) speakLater(q.te, 300); }, [cur]);
   const adv = v => {
     const u = { ...ans, [q.id]: v }; setAns(u); setVal("");
-    if (cur + 1 < qs.length) setCur(cur + 1);
-    else { if (va) speak(tx.cProfFinishSpeak); setTimeout(() => onDone(u), 700); }
+    if (cur + 1 < qs.length) {
+      setCur(cur + 1);
+    } else {
+      if (va) speak(tx.cProfFinishSpeak);
+      setTimeout(() => finish(u), 700);
+    }
   };
   // Voice auto-advance only in va mode; in te/en mic fills but user taps Next
   const handleMic = tv => {
@@ -1440,6 +1491,50 @@ function CProfile({ onDone, onBack, langMode = "te" }) {
   };
   const prog = (cur / qs.length) * 100;
   const canNext = val || q.id === "gst";
+
+  const finish = async (profileData) => {
+    if (!phone) {
+      const message = "Phone number is required to register a contractor account.";
+      setError(message);
+      if (va) speak("ఫోన్ నంబర్ అవసరం. ఖాతా కోసం ఫోన్ అవసరం.");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/accounts/register-contractor/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          name: profileData.name,
+          company: profileData.company,
+          location: profileData.location,
+          workType: profileData.workType,
+          workers: profileData.workers,
+          budget: profileData.budget,
+          gst: profileData.gst,
+          language: langMode === "va" ? "te" : langMode,
+        })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "Registration failed. Please try again.");
+        return;
+      }
+      if (!data?.profile) {
+        setError(data?.error || "Registration failed. Please try again.");
+        return;
+      }
+      onDone(data.profile, data.token || null);
+    } catch (err) {
+      console.error("Contractor registration error", err);
+      setError("Unable to register. Check your network and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
   // Show the question in the active language
   const qLabel = langMode === "en" ? q.en : q.te;
   const qSub   = langMode === "en" ? q.te : q.en;
@@ -1469,10 +1564,19 @@ function CProfile({ onDone, onBack, langMode = "te" }) {
       <div style={{ color: "#47556970", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 18, textAlign: "center" }}>
         {va ? tx.cProfHintVoice : tx.cProfHintManual}
       </div>
-      <button onClick={() => adv(val)} disabled={!canNext} style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: canNext ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.08)", color: canNext ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: canNext ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
-        {cur + 1 < qs.length ? tx.cProfNext : tx.cProfDone}
+      <button onClick={() => cur + 1 < qs.length ? adv(val) : finish({
+        name: ans.name,
+        company: ans.company,
+        location: ans.location,
+        workType: ans.workType,
+        workers: ans.workers,
+        budget: ans.budget,
+        gst: ans.gst,
+      })} disabled={!canNext || loading} style={{ width: "100%", padding: "14px", borderRadius: 13, border: "none", background: canNext ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.08)", color: canNext ? "#fff" : "#475569", fontWeight: 800, fontSize: 15, cursor: canNext ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
+        {loading ? (langMode === "en" ? "Saving..." : "సేవ్ చేస్తున్నాం...") : (cur + 1 < qs.length ? tx.cProfNext : tx.cProfDone)}
       </button>
       {q.id === "gst" && <div style={{ textAlign: "center", marginTop: 10, color: "#64748b", fontSize: 11 }}>{tx.cProfSkip}</div>}
+      {error && <div style={{ color: "#f87171", fontSize: 13, marginTop: 14, textAlign: "center" }}>{error}</div>}
     </div>
   </div>;
 }
@@ -2145,7 +2249,7 @@ function AuthChoice({ role, langMode = "te", onRegister, onLogin, onBack }) {
 // ADD THIS — WORKER LOGIN
 // Simple OTP-based login. No profile questions.
 // ══════════════════════════════════════════════════════
-function WorkerLogin({ langMode = "te", onDone, onBack }) {
+function WorkerLogin({ langMode = "te", onDone, onBack, setWProf, setToken, setUserId, setPhoneId, setProfileError, setRole }) {
   const va   = langMode === "va";
   const isEn = langMode === "en";
   const [phone, setPhone]   = useState("");
@@ -2172,10 +2276,11 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
     setError("");
     setLoading(true);
     try {
+      const normPhone = ("" + phone).replace(/\D/g, '').slice(-10);
       const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ phone: normPhone })
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -2196,19 +2301,48 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
     setError("");
     setLoading(true);
     try {
+      const normPhone = ("" + phone).replace(/\D/g, '').slice(-10);
       const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp })
+        body: JSON.stringify({ phone: normPhone, otp })
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setError(data?.error || "OTP verification failed");
         return;
       }
-      if (data?.verified) {
+      if (data?.verified && data?.token) {
+        setToken(data.token);
+        if (data.user_id) setUserId(data.user_id);
+        if (data.phone) setPhoneId(data.phone);
+        setRole("worker");
+        setProfileError("");
+        let profilePayload = null;
+        try {
+          const profileRes = await fetch(`${BACKEND_URL}/api/accounts/profile/`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Token ${data.token}`
+            }
+          });
+          const profileData = await profileRes.json().catch(() => null);
+          console.log("Worker profileRes JSON:", profileData);
+          if (profileRes.ok && profileData?.success && profileData?.profile) {
+            profilePayload = profileData.profile;
+            setWProf(profilePayload);
+          } else {
+            const profileError = profileData?.error || "Unable to load worker profile";
+            setProfileError(profileError);
+          }
+        } catch (profileErr) {
+          setProfileError("Unable to load worker profile");
+        }
         if (va) speak("స్వాగతం! లాగిన్ అయ్యారు.");
-        setTimeout(onDone, 600);
+        setTimeout(() => onDone(data.token, data.user_id, data.phone, profilePayload), 600);
+      } else if (data?.verified && !data?.token) {
+        setError("User account not found. Please register first.");
       } else {
         setError("OTP verification failed");
       }
@@ -2293,7 +2427,7 @@ function WorkerLogin({ langMode = "te", onDone, onBack }) {
 // ADD THIS — CONTRACTOR LOGIN
 // Simple OTP-based login. No profile questions.
 // ══════════════════════════════════════════════════════
-function ContractorLogin({ langMode = "te", onDone, onBack }) {
+function ContractorLogin({ langMode = "te", onDone, onBack, setCProf, setToken, setUserId, setPhoneId, setProfileError, setRole }) {
   const va   = langMode === "va";
   const isEn = langMode === "en";
   const [phone, setPhone]   = useState("");
@@ -2320,10 +2454,11 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
     setError("");
     setLoading(true);
     try {
+      const normPhone = ("" + phone).replace(/\D/g, '').slice(-10);
       const res = await fetch(`${BACKEND_URL}/api/accounts/send-otp/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ phone: normPhone })
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -2344,19 +2479,47 @@ function ContractorLogin({ langMode = "te", onDone, onBack }) {
     setError("");
     setLoading(true);
     try {
+      const normPhone = ("" + phone).replace(/\D/g, '').slice(-10);
       const res = await fetch(`${BACKEND_URL}/api/accounts/verify-otp/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp })
+        body: JSON.stringify({ phone: normPhone, otp })
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setError(data?.error || "OTP verification failed");
         return;
       }
-      if (data?.verified) {
+      if (data?.verified && data?.token) {
+        setToken(data.token);
+        if (data.user_id) setUserId(data.user_id);
+        if (data.phone) setPhoneId(data.phone);
+        setRole("contractor");
+        setProfileError("");
+        let profilePayload = null;
+        try {
+          const profileRes = await fetch(`${BACKEND_URL}/api/accounts/profile/`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Token ${data.token}`
+            }
+          });
+          const profileData = await profileRes.json().catch(() => null);
+          if (profileRes.ok && profileData?.success && profileData?.profile) {
+            profilePayload = profileData.profile;
+            setCProf(profilePayload);
+          } else {
+            const profileError = profileData?.error || "Unable to load contractor profile";
+            setProfileError(profileError);
+          }
+        } catch (profileErr) {
+          setProfileError("Unable to load contractor profile");
+        }
         if (va) speak("స్వాగతం! కాంట్రాక్టర్ లాగిన్ అయ్యారు.");
-        setTimeout(onDone, 600);
+        setTimeout(() => onDone(data.token, data.user_id, data.phone, profilePayload), 600);
+      } else if (data?.verified && !data?.token) {
+        setError("User account not found. Please register first.");
       } else {
         setError("OTP verification failed");
       }
@@ -2448,6 +2611,10 @@ export default function NiyogaX() {
   };
   const [screen, setScreen] = useState(getSavedScreen());
   const [role, setRole] = useState(localStorage.getItem("niyoga_role") || null);
+  const [token, setToken] = useState(localStorage.getItem("niyoga_token") || "");
+  const [userId, setUserId] = useState(localStorage.getItem("niyoga_user_id") || null);
+  const [phoneId, setPhoneId] = useState(localStorage.getItem("niyoga_phone") || null);
+  const [profileError, setProfileError] = useState("");
   // RESTORE the last page — worker goes to jobs, contractor goes to dashboard
   const getSavedPage = () => {
     const role = localStorage.getItem("niyoga_role");
@@ -2457,14 +2624,21 @@ export default function NiyogaX() {
   };
   const [page, setPage] = useState(getSavedPage());
   // SESSION HELPER — saves login state to localStorage
-  const saveSession = (role, lang, targetPage) => {
+  const saveSession = (role, lang, targetPage, authToken, authUserId = null, authPhone = null) => {
     localStorage.setItem("niyoga_loggedIn", "true");
     localStorage.setItem("niyoga_role", role);        // "worker" or "contractor"
     localStorage.setItem("niyoga_lang", lang || "te"); // language code
     localStorage.setItem("niyoga_page", targetPage);  // page to restore on reload
-    // Save profile data so it survives page reload
-    if (role === "worker") localStorage.setItem("niyoga_wProf", JSON.stringify(wProf));
-    if (role === "contractor") localStorage.setItem("niyoga_cProf", JSON.stringify(cProf));
+    if (authToken) {
+      localStorage.setItem("niyoga_token", authToken);
+      setToken(authToken);
+    }
+    if (authUserId) {
+      localStorage.setItem("niyoga_user_id", authUserId);
+    }
+    if (authPhone) {
+      localStorage.setItem("niyoga_phone", authPhone);
+    }
   };
   // SESSION HELPER — clears login state from localStorage
   const clearSession = () => {
@@ -2472,34 +2646,22 @@ export default function NiyogaX() {
     localStorage.removeItem("niyoga_role");
     localStorage.removeItem("niyoga_lang");
     localStorage.removeItem("niyoga_page");
-    localStorage.removeItem("niyoga_wProf");
-    localStorage.removeItem("niyoga_cProf");
+    localStorage.removeItem("niyoga_token");
+    localStorage.removeItem("niyoga_user_id");
+    localStorage.removeItem("niyoga_phone");
+    setToken("");
+    setRole(null);
+    setUserId(null);
+    setPhoneId(null);
+    setProfileError("");
   };
-  const [cProf, setCProf] = useState(() => {
-    try {
-      const saved = localStorage.getItem("niyoga_cProf");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
-  const [wProf, setWProf] = useState(() => {
-    try {
-      const saved = localStorage.getItem("niyoga_wProf");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
-  
-  // Keep profile data in sync with localStorage whenever it changes
-  useEffect(() => {
-    if (role === "worker" && wProf && Object.keys(wProf).length > 0) {
-      localStorage.setItem("niyoga_wProf", JSON.stringify(wProf));
-    }
-    if (role === "contractor" && cProf && Object.keys(cProf).length > 0) {
-      localStorage.setItem("niyoga_cProf", JSON.stringify(cProf));
-    }
-  }, [wProf, cProf, role]);
+  const [cProf, setCProf] = useState({});
+  const [wProf, setWProf] = useState({});
   const [langMode, setLangMode]   = useState(localStorage.getItem("niyoga_lang") || "te");
   const [wLangMode, setWLangMode] = useState(localStorage.getItem("niyoga_lang") || "te");
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [workerPhone, setWorkerPhone] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
 
   // Niyo assistant + job filter wiring — unchanged from original
   const { jobFilter, setJobFilter } = useJobFilter();
@@ -2609,21 +2771,36 @@ export default function NiyogaX() {
         <WorkerLogin
           langMode={wLangMode}
           onBack={() => { stopSpeech(); setScreen("w_auth"); }}
-          onDone={() => {
-            if (wLangMode === "va") speak("స్వాగతం! లాగిన్ అయ్యారు.");
-            // SAVE worker session to localStorage
-            saveSession("worker", wLangMode || "te", "jobs");
-            setPage("jobs"); setScreen("main");
-          }}
+          setWProf={setWProf}
+          setToken={setToken}
+          setUserId={setUserId}
+          setPhoneId={setPhoneId}
+          setProfileError={setProfileError}
+          setRole={setRole}
+            onDone={(loginToken, loginUserId, loginPhone, profilePayload) => {
+              setRole("worker");
+              if (wLangMode === "va") speak("స్వాగతం! లాగిన్ అయ్యారు.");
+              setToken(loginToken);
+              setUserId(loginUserId);
+              setPhoneId(loginPhone);
+              setWProf(profilePayload || {});
+              // SAVE worker session to localStorage
+              saveSession("worker", wLangMode || "te", "jobs", loginToken, loginUserId, loginPhone);
+              setPage("jobs"); setScreen("main");
+            }}
         />
       )}
       {/* Existing worker registration — UNCHANGED */}
-      {screen === "w_reg"  && <WorkerReg langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_auth"); }} onDone={() => setScreen("w_prof")} />}
-      {screen === "w_prof" && <WorkerProfile langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_reg"); }} onDone={profile => {
+      {screen === "w_reg"  && <WorkerReg langMode={wLangMode} onBack={() => { stopSpeech(); setScreen("w_auth"); }} onDone={() => setScreen("w_prof")} setWorkerPhone={setWorkerPhone} />}
+      {screen === "w_prof" && <WorkerProfile langMode={wLangMode} phone={workerPhone} onBack={() => { stopSpeech(); setScreen("w_reg"); }} onDone={(profile, tokenParam) => {
         setWProf(profile);
-        speak("ప్రొఫైల్ పూర్తయింది! స్వాగతం!");
-        // SAVE worker session to localStorage
-        saveSession("worker", wLangMode || "te", "jobs");
+        if (wLangMode === "va") speak("ప్రొఫైల్ పూర్తయింది! స్వాగతం!");
+        if (tokenParam) {
+          setToken(tokenParam);
+          setUserId(profile?.user_id || null);
+          setPhoneId(profile?.phone || null);
+          saveSession("worker", wLangMode || "te", "jobs", tokenParam, profile?.user_id || null, profile?.phone || null);
+        }
         setPage("jobs"); setScreen("main");
       }} />}
 
@@ -2644,21 +2821,36 @@ export default function NiyogaX() {
         <ContractorLogin
           langMode={langMode}
           onBack={() => { stopSpeech(); setScreen("c_auth"); }}
-          onDone={() => {
-            if (langMode === "va") speak(T.va.cDoneSpeak);
-            // SAVE contractor session to localStorage
-            saveSession("contractor", langMode || "en", "dashboard");
-            setPage("dashboard"); setScreen("main");
-          }}
+          setCProf={setCProf}
+          setToken={setToken}
+          setUserId={setUserId}
+          setPhoneId={setPhoneId}
+          setProfileError={setProfileError}
+          setRole={setRole}
+            onDone={(loginToken, loginUserId, loginPhone, profilePayload) => {
+              setRole("contractor");
+              if (langMode === "va") speak(T.va.cDoneSpeak);
+              setToken(loginToken);
+              setUserId(loginUserId);
+              setPhoneId(loginPhone);
+              setCProf(profilePayload || {});
+              // SAVE contractor session to localStorage
+              saveSession("contractor", langMode || "en", "dashboard", loginToken, loginUserId, loginPhone);
+              setPage("dashboard"); setScreen("main");
+            }}
         />
       )}
       {/* Existing contractor registration — UNCHANGED */}
-      {screen === "c_reg"  && <CReg   langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_auth"); }} onDone={() => setScreen("c_prof")} />}
-      {screen === "c_prof" && <CProfile langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_reg"); }} onDone={d => {
-        setCProf(d);
+      {screen === "c_reg"  && <CReg   langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_auth"); }} onDone={() => setScreen("c_prof")} setContractorPhone={setContractorPhone} />}
+      {screen === "c_prof" && <CProfile phone={contractorPhone} langMode={langMode} onBack={() => { stopSpeech(); setScreen("c_reg"); }} onDone={(profile, tokenParam) => {
+        setCProf(profile);
         if (langMode === "va") speak(T.va.cDoneSpeak);
-        // SAVE contractor session to localStorage
-        saveSession("contractor", langMode || "en", "dashboard");
+        if (tokenParam) {
+          setToken(tokenParam);
+          setUserId(profile?.user_id || null);
+          setPhoneId(profile?.phone || null);
+          saveSession("contractor", langMode || "en", "dashboard", tokenParam, profile?.user_id || null, profile?.phone || null);
+        }
         setPage("dashboard"); setScreen("main");
       }} />}
 
@@ -2680,7 +2872,7 @@ export default function NiyogaX() {
               <div style={{ color: "#64748b", fontSize: 12, marginTop: 3, fontFamily: "'Noto Sans Telugu',sans-serif" }}>{wProf?.workType || "కార్మికుడు"}</div>
               {/* Profile rows */}
               {[
-                [wTx.wProfileLoc,    wProf?.location || (wLangMode === "en" ? "Hyderabad" : "హైదరాబాదు")],
+                [wTx.wProfileLoc,    wProf?.location || "—"],
                 [wTx.wProfileRating,   "4.9 / 5.0"],
                 [wTx.wProfileVerified,  wLangMode === "en" ? "Complete" : "పూర్తయింది"],
                 [wTx.wProfileDaily, wProf?.wage ? `₹${wProf.wage}/day` : "—"],
@@ -2733,7 +2925,7 @@ export default function NiyogaX() {
       {screen === "main" && role === "contractor" && page === "profile"   && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", padding: "40px 20px 100px" }}>
         <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 24, padding: 34, maxWidth: 400, width: "100%", textAlign: "center" }}>
           <div style={{ width: 76, height: 76, borderRadius: "50%", background: "linear-gradient(135deg,#22c55e,#16a34a)", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🏢</div>
-          <div style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 22, fontFamily: "'Rajdhani',sans-serif" }}>{cProf.company || (langMode === "en" ? "Your Company" : "మీ కంపెనీ")}</div>
+          <div style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 22, fontFamily: "'Rajdhani',sans-serif" }}>{cProf.company || "—"}</div>
           <div style={{ display: "flex", gap: 7, justifyContent: "center", marginTop: 10, flexWrap: "wrap" }}>
             <span style={{ background: "rgba(34,197,94,.15)", border: "1px solid rgba(34,197,94,.4)", borderRadius: 50, padding: "2px 12px", color: "#22c55e", fontSize: 10, fontWeight: 700 }}>✓ VERIFIED</span>
             <span style={{ background: "rgba(255,140,0,.1)", border: "1px solid rgba(255,140,0,.3)", borderRadius: 50, padding: "2px 12px", color: "#ff8c00", fontSize: 10, fontWeight: 700 }}>SAFE WORKPLACE</span>
