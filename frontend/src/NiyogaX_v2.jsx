@@ -2669,6 +2669,47 @@ export default function NiyogaX() {
     if (jobFilter) { setPage("jobs"); setScreen("main"); }
   }, [jobFilter]);
 
+  useEffect(() => {
+    const restoreProfile = async () => {
+      if (!token || !role) return;
+      const hasProfile = role === "worker" ? Object.keys(wProf).length > 0 : Object.keys(cProf).length > 0;
+      if (hasProfile) return;
+
+      try {
+        const profileRes = await fetch(`${BACKEND_URL}/api/accounts/profile/`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Token ${token}`
+          }
+        });
+        const profileData = await profileRes.json().catch(() => null);
+
+        if (profileRes.ok && profileData?.success && profileData?.profile) {
+          if (role === "worker") {
+            setWProf(profileData.profile);
+          } else if (role === "contractor") {
+            setCProf(profileData.profile);
+          }
+          return;
+        }
+
+        if (profileRes.status === 401 || profileRes.status === 403 || profileData?.error?.toString().toLowerCase().includes("token")) {
+          clearSession();
+          setScreen("landing");
+          setPage("dashboard");
+          return;
+        }
+
+        setProfileError(profileData?.error || "Unable to restore profile");
+      } catch (err) {
+        setProfileError("Unable to restore profile");
+      }
+    };
+
+    restoreProfile();
+  }, [token, role, wProf, cProf]);
+
   const handleAssistantNavigate = (path, filter) => {
     console.log('[NiyogaX] handleAssistantNavigate start', { path, filter });
     // SAFETY CHECK — only navigate if user is already logged in
