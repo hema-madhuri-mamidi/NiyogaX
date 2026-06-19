@@ -137,7 +137,7 @@ function stopSpeech() {
 const T = {
   te: {
     // Nav
-    navHome: "హోమ్", navDash: "డాష్", navPost: "పని", navWorkers: "కార్మి", navProfile: "ప్రొఫైల్",
+    navHome: "హోమ్", navDash: "డాష్", navPost: "పని", navWorkers: "కార్మి", navProfile: "ప్రొఫైల్", navMyJobs: "నా పనులు",
     // CLang
     langTitle: "భాష ఎంచుకోండి", langSub: "Which language do you prefer?",
     // CReg
@@ -217,7 +217,7 @@ const T = {
     logout: "లాగ్ అవుట్",
   },
   en: {
-    navHome: "Home", navDash: "Dash", navPost: "Job", navWorkers: "Workers", navProfile: "Profile",
+    navHome: "Home", navDash: "Dash", navPost: "Job", navWorkers: "Workers", navProfile: "Profile", navMyJobs: "My Jobs",
     langTitle: "Choose Language", langSub: "Which language do you prefer?",
     cRegTitle: "Contractor Registration", cRegStep: "Contractor — Step 1 of 3",
     cRegMicHint: '🎤 Say "Face", "Voice" or "Phone"',
@@ -627,6 +627,7 @@ function Nav({ page, go, role, langMode = "te" }) {
   const cn = [
     { id: "home",      icon: "🏠", l: tx.navHome },
     { id: "dashboard", icon: "📊", l: tx.navDash },
+    { id: "myjobs",    icon: "📋", l: tx.navMyJobs },
     { id: "post",      icon: "➕", l: tx.navPost },
     { id: "workers",   icon: "👷", l: tx.navWorkers },
     { id: "profile",   icon: "🏢", l: tx.navProfile },
@@ -1920,12 +1921,30 @@ function CDash({ profile = {}, onPost, onWorkers, langMode = "te" }) {
   </div>;
 }
 /* ── POST JOB FLOW ── */
-function PostJob({ onBack, onDone, langMode = "te" }) {
+function PostJob({ onBack, onDone, langMode = "te", initialData }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va";
   const { t, show } = useToast();
   const [step, setStep] = useState(1);
-  const [d, setD] = useState({ type: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false });
+  // Support optional editing: initialData prop or `niyoga_edit_job` in localStorage
+  const editInitial = initialData || (() => {
+    try { const s = localStorage.getItem('niyoga_edit_job'); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+  })();
+  const defaultState = { type: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false };
+  const mapped = editInitial ? {
+    type: editInitial.job_type || "",
+    loc: editInitial.location || "",
+    salary: editInitial.daily_salary || "",
+    workers: editInitial.workers_needed || "",
+    days: editInitial.days_of_work || "",
+    timing: editInitial.shift_timing || "",
+    phone: editInitial.phone_number || "",
+    urgent: editInitial.urgent_hiring || false
+  } : defaultState;
+  const [d, setD] = useState(mapped);
+
+  // Clear edit payload when component unmounts
+  useEffect(() => { return () => { try { localStorage.removeItem('niyoga_edit_job'); } catch(e){} }; }, []);
   const cats = [
     { id: "construction", icon: "🏗️", t: langMode === "en" ? "Construction" : "నిర్మాణం",   color: "#ff8c00" },
     { id: "farming",      icon: "🌾", t: langMode === "en" ? "Farming"      : "వ్యవసాయం",   color: "#22c55e" },
@@ -2099,6 +2118,7 @@ function PostJob({ onBack, onDone, langMode = "te" }) {
             // Success: show message then continue existing flow
             show && show("Job posted successfully", "#22c55e");
             speak("అభినందనలు! మీ పని పోస్ట్ publish అయింది. దగ్గర కార్మికులకు నోటిఫికేషన్ పంపబడింది.");
+            try { localStorage.removeItem('niyoga_edit_job'); } catch(e){}
             setTimeout(onDone, 1200);
           } else {
             // Show backend error message
@@ -3016,8 +3036,9 @@ export default function NiyogaX() {
         <button onClick={() => setPage("dashboard")} style={{ marginTop: 24, padding: "13px 34px", background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", borderRadius: 50, color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>{tx.cHomeBtn}</button>
       </div>}
       {screen === "main" && role === "contractor" && page === "dashboard" && <CDash langMode={langMode} profile={cProf} onPost={() => setPage("post")} onWorkers={() => setPage("workers")} />}
-      {screen === "main" && role === "contractor" && page === "post"      && <PostJob langMode={langMode} onBack={() => setPage("dashboard")} onDone={() => setPage("dashboard")} />}
+          {screen === "main" && role === "contractor" && page === "post"      && <PostJob langMode={langMode} onBack={() => { try{ localStorage.removeItem('niyoga_edit_job'); }catch(e){}; setPage("dashboard"); }} onDone={() => setPage("dashboard")} />}
       {screen === "main" && role === "contractor" && page === "workers"   && <WorkerMgmt langMode={langMode} onBack={() => setPage("dashboard")} />}
+          {screen === "main" && role === "contractor" && page === "myjobs"    && <MyJobs langMode={langMode} onBack={() => setPage("dashboard")} onEdit={job => { try{ localStorage.setItem('niyoga_edit_job', JSON.stringify(job)); }catch(e){}; setPage('post'); }} />}
       {screen === "main" && role === "contractor" && page === "profile"   && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", padding: "40px 20px 100px" }}>
         <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 24, padding: 34, maxWidth: 400, width: "100%", textAlign: "center" }}>
           <div style={{ width: 76, height: 76, borderRadius: "50%", background: "linear-gradient(135deg,#22c55e,#16a34a)", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🏢</div>
@@ -3040,4 +3061,64 @@ export default function NiyogaX() {
       <SOS workerProfile={role === "worker" ? wProf : null} style={assistantOpen ? { bottom: "90px", right: "80px" } : undefined} />
       </>
   );
+}
+
+/* ── MY JOBS (CONTRACTOR) ── */
+function MyJobs({ langMode = "te", onBack, onEdit }) {
+  const isEn = langMode === "en";
+  const [jobs, setJobs] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { t, show } = useToast();
+
+  useEffect(() => {
+    let mounted = true;
+    const token = localStorage.getItem('niyoga_token') || "";
+    fetch(`${BACKEND_URL}/api/jobs/my/`, { headers: { Authorization: `Token ${token}` } })
+      .then(r => r.json().then(j => ({ status: r.status, body: j })).catch(() => ({ status: r.status, body: {} })))
+      .then(res => {
+        if (!mounted) return;
+        if (res.status === 200) setJobs(res.body);
+        else { setJobs([]); show && show(res.body && (res.body.detail || res.body.error) ? (res.body.detail || res.body.error) : 'Failed to load jobs', '#ef4444'); }
+      })
+      .catch(err => { console.error('[MyJobs] fetch failed', err); setJobs([]); show && show('Network error', '#ef4444'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  if (loading) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading jobs…</div>;
+  if (!jobs || jobs.length === 0) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+    <div style={{ color: '#94a3b8' }}>{isEn ? 'No jobs yet' : 'ఇప్పటి వరకు పనులు లేవు'}</div>
+    <button onClick={onBack} style={{ padding: '8px 14px', borderRadius: 10, background: '#22c55e', color: '#fff', border: 'none' }}>{isEn ? 'Back' : 'వెనుకకు'}</button>
+  </div>;
+
+  return <div style={{ minHeight: '100vh', padding: '60px 18px 100px', position: 'relative', zIndex: 2 }}>
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+        <h1 style={{ color: '#f1f5f9', fontFamily: "'Rajdhani',sans-serif", fontSize: 22, fontWeight: 800 }}>{isEn ? 'My Jobs' : 'నా పనులు'}</h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onBack} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)', background: 'transparent', color: '#94a3b8' }}>{isEn ? 'Back' : 'వెనుకకు'}</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 18 }}>
+        {jobs.map((j, i) => <div key={j.id} style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${j.status === 'active' ? '#22c55e' : '#64748b'}30`, borderRadius: 20, padding: 18, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, color: '#f1f5f9' }}>{j.job_type}</div>
+            <div style={{ color: '#94a3b8', fontSize: 12 }}>{new Date(j.created_at).toLocaleString()}</div>
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}>{j.location}</div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            <div style={{ color: '#22c55e', fontWeight: 800 }}>₹{j.daily_salary}</div>
+            <div style={{ color: '#94a3b8' }}>{j.workers_needed} {isEn ? 'workers' : 'మంది'}</div>
+            <div style={{ color: '#94a3b8' }}>{j.days_of_work} {isEn ? 'days' : 'రోజులు'}</div>
+          </div>
+          <div style={{ color: '#94a3b8', marginBottom: 12 }}>{j.shift_timing} • <strong style={{ color: '#f1f5f9' }}>{j.status}</strong></div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={() => onEdit && onEdit(j)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)', background: 'transparent', color: '#94a3b8' }}>Edit</button>
+            <button onClick={() => { if (window.confirm(isEn ? 'Delete this job? (UI only)' : 'ఈ పనిని తొలగించాలా? (UI మాత్రమే)')) { show && show(isEn ? 'Deleted (UI only)' : 'తొలగించబడింది (UI మాత్రమే)', '#ef4444'); } }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff' }}>Delete</button>
+          </div>
+        </div>)}
+      </div>
+    </div>
+  </div>;
 }

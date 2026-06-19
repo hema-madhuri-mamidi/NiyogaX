@@ -61,3 +61,26 @@ def create_job(request):
     else:
         logger.warning("Job creation validation failed: errors=%s", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def my_jobs(request):
+    """
+    Return jobs created by the authenticated contractor.
+    """
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response({"error": "Only contractors can view their jobs."}, status=status.HTTP_403_FORBIDDEN)
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    except ContractorProfile.DoesNotExist:
+        return Response({"error": "Contractor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    qs = Job.objects.filter(contractor=contractor).order_by('-created_at')
+    serializer = JobSerializer(qs, many=True)
+    return Response(serializer.data)
