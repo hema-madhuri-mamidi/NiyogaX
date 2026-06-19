@@ -84,3 +84,41 @@ def my_jobs(request):
     qs = Job.objects.filter(contractor=contractor).order_by('-created_at')
     serializer = JobSerializer(qs, many=True)
     return Response(serializer.data)
+
+
+@api_view(['PATCH', 'DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def job_detail(request, job_id):
+    """
+    Update or delete a job owned by the authenticated contractor.
+    """
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response({"error": "Only contractors can modify jobs."}, status=status.HTTP_403_FORBIDDEN)
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    except ContractorProfile.DoesNotExist:
+        return Response({"error": "Contractor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        job = Job.objects.get(id=job_id)
+    except Job.DoesNotExist:
+        return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if job.contractor_id != contractor.id:
+        return Response({"error": "You do not have permission to modify this job."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'PATCH':
+        serializer = JobSerializer(job, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # DELETE
+    job.delete()
+    return Response({"message": "Job deleted successfully."}, status=status.HTTP_200_OK)

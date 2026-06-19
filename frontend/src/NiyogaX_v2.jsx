@@ -1928,8 +1928,9 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
   const [step, setStep] = useState(1);
   // Support optional editing: initialData prop or `niyoga_edit_job` in localStorage
   const editInitial = initialData || (() => {
-    try { const s = localStorage.getItem('niyoga_edit_job'); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+    try { const s = localStorage.getItem('niyoga_edit_job'); const parsed = s ? JSON.parse(s) : null; console.log("[POSTJOB] editInitial =", parsed); console.log("[POSTJOB] editInitial.id =", parsed?.id); return parsed; } catch(e) { console.error(e); return null; }
   })();
+  const [editJobId] = useState(editInitial?.id || null);
   const defaultState = { type: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false };
   const mapped = editInitial ? {
     type: editInitial.job_type || "",
@@ -2101,8 +2102,14 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
         console.log("[PostJob] request payload:", payload);
 
         try {
-          const res = await fetch(`${BACKEND_URL}/api/jobs/`, {
-            method: "POST",
+          const editId = editJobId;
+          const url = editId ? `${BACKEND_URL}/api/jobs/${editId}/` : `${BACKEND_URL}/api/jobs/`;
+          const method = editId ? "PATCH" : "POST";
+          console.log("[FIX] editJobId =", editJobId);
+          console.log("[FIX] method =", method);
+          console.log("[FIX] url =", url);
+          const res = await fetch(url, {
+            method,
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Token ${token}`
@@ -2114,20 +2121,20 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
           console.log("[PostJob] response status:", res.status);
           console.log("[PostJob] response json:", json);
 
-          if (res.status === 201) {
-            // Success: show message then continue existing flow
-            show && show("Job posted successfully", "#22c55e");
-            speak("అభినందనలు! మీ పని పోస్ట్ publish అయింది. దగ్గర కార్మికులకు నోటిఫికేషన్ పంపబడింది.");
+          if (res.status === 201 || res.status === 200) {
+            const successMessage = editId ? "Job updated successfully" : "Job posted successfully";
+            show && show(successMessage, "#22c55e");
+            speak(editId ? "Job details have been updated." : "అభినందనలు! మీ పని పోస్ట్ publish అయింది. దగ్గర కార్మికులకు నోటిఫికేషన్ పంపబడింది.");
             try { localStorage.removeItem('niyoga_edit_job'); } catch(e){}
             setTimeout(onDone, 1200);
           } else {
             // Show backend error message
-            const errMsg = (json && (json.detail || json.error || Object.values(json)[0])) || "Failed to create job";
+            const errMsg = (json && (json.detail || json.error || Object.values(json)[0])) || (editId ? "Failed to update job" : "Failed to create job");
             show && show(String(errMsg), "#ef4444");
           }
         } catch (err) {
           console.error("[PostJob] request failed:", err);
-          show && show("Network error while creating job", "#ef4444");
+          show && show(editInitial ? "Network error while updating job" : "Network error while creating job", "#ef4444");
         }
       }} color="#22c55e" disabled={!d.phone}>🚀 పని Publish చేయండి</Btn>
     </div>
@@ -3038,7 +3045,7 @@ export default function NiyogaX() {
       {screen === "main" && role === "contractor" && page === "dashboard" && <CDash langMode={langMode} profile={cProf} onPost={() => setPage("post")} onWorkers={() => setPage("workers")} />}
           {screen === "main" && role === "contractor" && page === "post"      && <PostJob langMode={langMode} onBack={() => { try{ localStorage.removeItem('niyoga_edit_job'); }catch(e){}; setPage("dashboard"); }} onDone={() => setPage("dashboard")} />}
       {screen === "main" && role === "contractor" && page === "workers"   && <WorkerMgmt langMode={langMode} onBack={() => setPage("dashboard")} />}
-          {screen === "main" && role === "contractor" && page === "myjobs"    && <MyJobs langMode={langMode} onBack={() => setPage("dashboard")} onEdit={job => { try{ localStorage.setItem('niyoga_edit_job', JSON.stringify(job)); }catch(e){}; setPage('post'); }} />}
+          {screen === "main" && role === "contractor" && page === "myjobs"    && <MyJobs langMode={langMode} onBack={() => setPage("dashboard")} onEdit={job => { console.log("[EDIT CLICK] selected job =", job); try{ localStorage.setItem('niyoga_edit_job', JSON.stringify(job)); }catch(e){}; setPage('post'); }} />}
       {screen === "main" && role === "contractor" && page === "profile"   && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", padding: "40px 20px 100px" }}>
         <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(34,197,94,.2)", borderRadius: 24, padding: 34, maxWidth: 400, width: "100%", textAlign: "center" }}>
           <div style={{ width: 76, height: 76, borderRadius: "50%", background: "linear-gradient(135deg,#22c55e,#16a34a)", margin: "0 auto 18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>🏢</div>
@@ -3115,7 +3122,26 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
           <div style={{ color: '#94a3b8', marginBottom: 12 }}>{j.shift_timing} • <strong style={{ color: '#f1f5f9' }}>{j.status}</strong></div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={() => onEdit && onEdit(j)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)', background: 'transparent', color: '#94a3b8' }}>Edit</button>
-            <button onClick={() => { if (window.confirm(isEn ? 'Delete this job? (UI only)' : 'ఈ పనిని తొలగించాలా? (UI మాత్రమే)')) { show && show(isEn ? 'Deleted (UI only)' : 'తొలగించబడింది (UI మాత్రమే)', '#ef4444'); } }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff' }}>Delete</button>
+            <button onClick={async () => {
+              if (!window.confirm(isEn ? 'Delete this job?' : 'ఈ పనిని తొలగించాలా?')) return;
+              const token = localStorage.getItem('niyoga_token') || "";
+              try {
+                const res = await fetch(`${BACKEND_URL}/api/jobs/${j.id}/`, {
+                  method: 'DELETE',
+                  headers: { Authorization: `Token ${token}` }
+                });
+                const json = await res.json().catch(() => ({}));
+                if (res.status === 200) {
+                  setJobs(current => current.filter(item => item.id !== j.id));
+                  show && show(isEn ? 'Job deleted' : 'పని తొలగించబడింది', '#22c55e');
+                } else {
+                  show && show(json && (json.detail || json.error) ? (json.detail || json.error) : (isEn ? 'Failed to delete job' : 'పని తొలగించలేకపోయింది'), '#ef4444');
+                }
+              } catch (err) {
+                console.error('[MyJobs] delete failed', err);
+                show && show(isEn ? 'Network error while deleting job' : 'పని తొలగించేటప్పుడు నెట్‌వర్క్ లోపం', '#ef4444');
+              }
+            }} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff' }}>Delete</button>
           </div>
         </div>)}
       </div>
