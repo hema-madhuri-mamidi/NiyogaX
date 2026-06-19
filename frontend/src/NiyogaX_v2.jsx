@@ -1923,6 +1923,7 @@ function CDash({ profile = {}, onPost, onWorkers, langMode = "te" }) {
 function PostJob({ onBack, onDone, langMode = "te" }) {
   const tx = T[langMode] || T.te;
   const va = langMode === "va";
+  const { t, show } = useToast();
   const [step, setStep] = useState(1);
   const [d, setD] = useState({ type: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false });
   const cats = [
@@ -2054,7 +2055,61 @@ function PostJob({ onBack, onDone, langMode = "te" }) {
           onFocus={e => e.target.style.borderColor = "#22c55e"} onBlur={e => e.target.style.borderColor = "rgba(34,197,94,.3)"} />
         <Mic onResult={t => setD(x => ({ ...x, phone: t }))} size={46} color="#22c55e" />
       </div>
-      <Btn onClick={() => { speak("అభినందనలు! మీ పని పోస్ట్ publish అయింది. దగ్గర కార్మికులకు నోటిఫికేషన్ పంపబడింది."); setTimeout(onDone, 1200); }} color="#22c55e" disabled={!d.phone}>🚀 పని Publish చేయండి</Btn>
+      <Btn onClick={async () => {
+        // Validation
+        const payload = {
+          job_type: d.type,
+          location: d.loc,
+          daily_salary: Number(d.salary || 0),
+          workers_needed: Number(d.workers || 0),
+          days_of_work: Number(d.days || 0),
+          shift_timing: d.timing,
+          urgent_hiring: Boolean(d.urgent),
+          phone_number: d.phone,
+        };
+
+        // Simple client-side validation
+        if (!payload.job_type) { show && show("Please select a job type", "#ef4444"); return; }
+        if (!payload.location) { show && show("Please enter a location", "#ef4444"); return; }
+        if (!payload.daily_salary || payload.daily_salary <= 0) { show && show("Please enter a valid daily salary", "#ef4444"); return; }
+        if (!payload.workers_needed || payload.workers_needed <= 0) { show && show("Please enter number of workers needed", "#ef4444"); return; }
+        if (!payload.days_of_work || payload.days_of_work <= 0) { show && show("Please enter number of days", "#ef4444"); return; }
+        if (!payload.shift_timing) { show && show("Please select shift timing", "#ef4444"); return; }
+        if (!payload.phone_number) { show && show("Please enter a phone number", "#ef4444"); return; }
+
+        // Send request to backend
+        const token = localStorage.getItem("niyoga_token") || "";
+        console.log("[PostJob] request payload:", payload);
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/jobs/`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Token ${token}`
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const json = await res.json().catch(() => ({}));
+          console.log("[PostJob] response status:", res.status);
+          console.log("[PostJob] response json:", json);
+
+          if (res.status === 201) {
+            // Success: show message then continue existing flow
+            show && show("Job posted successfully", "#22c55e");
+            speak("అభినందనలు! మీ పని పోస్ట్ publish అయింది. దగ్గర కార్మికులకు నోటిఫికేషన్ పంపబడింది.");
+            setTimeout(onDone, 1200);
+          } else {
+            // Show backend error message
+            const errMsg = (json && (json.detail || json.error || Object.values(json)[0])) || "Failed to create job";
+            show && show(String(errMsg), "#ef4444");
+          }
+        } catch (err) {
+          console.error("[PostJob] request failed:", err);
+          show && show("Network error while creating job", "#ef4444");
+        }
+      }} color="#22c55e" disabled={!d.phone}>🚀 పని Publish చేయండి</Btn>
     </div>
   </div>;
 }
