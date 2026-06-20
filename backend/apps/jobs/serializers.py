@@ -68,13 +68,25 @@ class JobSerializer(serializers.ModelSerializer):
 
 
 class JobApplicationSerializer(serializers.ModelSerializer):
+    worker_name = serializers.SerializerMethodField()
+    worker_phone = serializers.SerializerMethodField()
+
     class Meta:
         model = JobApplication
         fields = [
             "id",
             "job",
             "worker",
+            "worker_name",
+            "worker_phone",
             "status",
             "applied_at",
         ]
         read_only_fields = ["id", "status", "applied_at"]
+
+    def get_worker_name(self, obj):
+        worker_profile = getattr(obj.worker, 'workerprofile', None)
+        return getattr(worker_profile, 'name', None) or ""
+
+    def get_worker_phone(self, obj):
+        return getattr(obj.worker, 'phone', "")

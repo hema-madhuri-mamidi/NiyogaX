@@ -3157,6 +3157,10 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
   const isEn = langMode === "en";
   const [jobs, setJobs] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showApplicants, setShowApplicants] = useState(false);
+  const [applicantJob, setApplicantJob] = useState(null);
+  const [applicants, setApplicants] = useState(null);
+  const [applicantsLoading, setApplicantsLoading] = useState(false);
   const { t, show } = useToast();
 
   useEffect(() => {
@@ -3173,6 +3177,39 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
+
+  const closeApplicants = () => {
+    setShowApplicants(false);
+    setApplicantJob(null);
+    setApplicants(null);
+    setApplicantsLoading(false);
+  };
+
+  const openApplicants = async job => {
+    setApplicantJob(job);
+    setShowApplicants(true);
+    setApplicants(null);
+    setApplicantsLoading(true);
+    const token = localStorage.getItem('niyoga_token') || "";
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/jobs/${job.id}/applications/`, {
+        headers: { Authorization: `Token ${token}` }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data)) {
+        setApplicants(data);
+      } else {
+        setApplicants([]);
+        show && show(data && (data.detail || data.error) ? (data.detail || data.error) : (isEn ? 'Failed to load applicants' : 'అభ్యర్థులను లోడ్ చేయలేకపోయాము'), '#ef4444');
+      }
+    } catch (err) {
+      console.error('[MyJobs] applicants fetch failed', err);
+      setApplicants([]);
+      show && show(isEn ? 'Network error' : 'నెట్‌వర్క్ లోపం', '#ef4444');
+    } finally {
+      setApplicantsLoading(false);
+    }
+  };
 
   if (loading) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading jobs…</div>;
   if (!jobs || jobs.length === 0) return <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
@@ -3204,6 +3241,7 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
           <div style={{ color: '#94a3b8', marginBottom: 12 }}>{j.shift_timing} • <strong style={{ color: '#f1f5f9' }}>{j.status}</strong></div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={() => onEdit && onEdit(j)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)', background: 'transparent', color: '#94a3b8' }}>Edit</button>
+            <button onClick={() => openApplicants(j)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)', background: 'transparent', color: '#94a3b8' }}>{isEn ? 'Applicants' : 'అభ్యర్థులు'}</button>
             <button onClick={async () => {
               if (!window.confirm(isEn ? 'Delete this job?' : 'ఈ పనిని తొలగించాలా?')) return;
               const token = localStorage.getItem('niyoga_token') || "";
@@ -3228,5 +3266,37 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
         </div>)}
       </div>
     </div>
+
+    {showApplicants && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(4,13,26,.92)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', animation: 'fadeIn .2s ease' }}>
+        <div style={{ width: '100%', maxWidth: 520, background: 'linear-gradient(145deg,rgba(15,25,50,.99),rgba(10,18,38,.99))', border: '2px solid rgba(59,130,246,.4)', borderRadius: 24, padding: '26px 24px', boxShadow: '0 0 60px rgba(59,130,246,.3),0 24px 80px rgba(0,0,0,.8)', animation: 'slideUp .3s cubic-bezier(.34,1.56,.64,1) both' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+            <div>
+              <div style={{ color: '#fff', fontSize: 20, fontWeight: 800, fontFamily: "'Rajdhani',sans-serif" }}>{isEn ? 'Applicants' : 'అభ్యర్థులు'}</div>
+              <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>{applicantJob?.job_type || ''}</div>
+            </div>
+            <button onClick={closeApplicants} style={{ border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 16, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: 4 }}>
+            {applicantsLoading ? (
+              <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>{isEn ? 'Loading applicants…' : 'అభ్యర్థులను లోడ్ చేస్తున్నాం…'}</div>
+            ) : applicants && applicants.length > 0 ? (
+              applicants.map((a, idx) => (
+                <div key={a.id || idx} style={{ padding: '14px 16px', borderRadius: 18, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(148,163,184,.12)', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ color: '#f1f5f9', fontWeight: 700 }}>{a.worker_name || (isEn ? 'Unnamed worker' : 'పేరు లేని పని')}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 12 }}>{new Date(a.applied_at).toLocaleDateString()}</div>
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 6 }}>{a.worker_phone || '-'}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 13 }}><strong style={{ color: '#f1f5f9' }}>{isEn ? 'Status:' : 'స్థితి:'}</strong> {a.status || '-'}</div>
+                </div>
+              ))
+            ) : (
+              <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>{isEn ? 'No applicants yet' : 'ఇంకా అభ్యర్థులు లేరు'}</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
   </div>;
 }
