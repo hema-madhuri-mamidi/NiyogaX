@@ -1228,27 +1228,68 @@ function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
 function Jobs({ langMode = "te" }) {
   const isEn = langMode === "en";
   const [filter, setFilter] = useState("all");
-  // Connect Niyo assistant job filter to this component's filter state
-  const { jobFilter } = useJobFilter();
-  console.log('[Jobs] render', { jobFilter, filter });
-  useEffect(() => {
-    if (jobFilter) {
-      console.log('[Jobs] jobFilter effect', { jobFilter, filterBefore: filter });
-      // Match the filter value to the cat values used in the jobs array
-      // jobFilter comes in as "Painting", "Driving" etc — convert to lowercase to match cat values
-      setFilter(jobFilter.toLowerCase());
-    }
-  }, [jobFilter]);
-  const { t, show } = useToast();
-  useEffect(() => { if (langMode === "va") speakLater(isEn ? "Here are your nearby jobs" : "ఇవి మీ దగ్గరలో ఉన్న పనులు", 400); }, []);
-  const jobs = [
+  const [applyingJobId, setApplyingJobId] = useState(null);
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [jobs, setJobs] = useState([
     { id: 1, icon: "🌾", cat: "farming", te: "వ్యవసాయం", en: "Farming", loc: "హైదరాబాద్ – 3 km", enLoc: "Hyderabad – 3 km", wage: "₹500/day", trust: 5, urgent: true, w: 8, color: "#22c55e" },
     { id: 2, icon: "🏗️", cat: "construction", te: "నిర్మాణం", en: "Construction", loc: "సికింద్రాబాద్ – 5 km", enLoc: "Secunderabad – 5 km", wage: "₹650/day", trust: 4, urgent: false, w: 15, color: "#ff8c00" },
     { id: 3, icon: "🎨", cat: "painting", te: "పెయింటింగ్", en: "Painting", loc: "కూకట్‌పల్లి – 7 km", enLoc: "Kukatpally – 7 km", wage: "₹550/day", trust: 5, urgent: false, w: 4, color: "#3b82f6" },
     { id: 4, icon: "🚗", cat: "driving", te: "డ్రైవింగ్", en: "Driving", loc: "మాదాపూర్ – 2 km", enLoc: "Madapur – 2 km", wage: "₹700/day", trust: 4, urgent: true, w: 2, color: "#8b5cf6" },
     { id: 5, icon: "🔧", cat: "mechanic", te: "మెకానిక్", en: "Mechanic", loc: "అమీర్‌పేట్ – 6 km", enLoc: "Ameerpet – 6 km", wage: "₹600/day", trust: 5, urgent: false, w: 3, color: "#ef4444" },
     { id: 6, icon: "🧹", cat: "cleaning", te: "శుభ్రత", en: "Cleaning", loc: "జూబ్లీ హిల్స్ – 4 km", enLoc: "Jubilee Hills – 4 km", wage: "₹400/day", trust: 4, urgent: false, w: 6, color: "#06b6d4" },
-  ];
+  ]);
+  const { t, show } = useToast();
+
+  const mapBackendJob = raw => {
+    const normalizedType = String(raw.job_type || "").toLowerCase();
+    const typeMap = {
+      farming: { icon: "🌾", color: "#22c55e", en: "Farming", te: "వ్యవసాయం", cat: "farming" },
+      construction: { icon: "🏗️", color: "#ff8c00", en: "Construction", te: "నిర్మాణం", cat: "construction" },
+      painting: { icon: "🎨", color: "#3b82f6", en: "Painting", te: "పెయింటింగ్", cat: "painting" },
+      driving: { icon: "🚗", color: "#8b5cf6", en: "Driving", te: "డ్రైవింగ్", cat: "driving" },
+    };
+    const match = Object.keys(typeMap).find(key => normalizedType.includes(key));
+    const meta = match ? typeMap[match] : { icon: "💼", color: "#64748b", en: raw.job_type || "Job", te: raw.job_type || "పని", cat: "all" };
+
+    const location = raw.location || "Unknown location";
+    const wage = raw.daily_salary != null ? `₹${raw.daily_salary}/day` : "₹500/day";
+    const workers = Number(raw.workers_needed) || 1;
+
+    return {
+      id: raw.id,
+      icon: meta.icon,
+      color: meta.color,
+      cat: meta.cat,
+      te: meta.te,
+      en: meta.en,
+      loc: location,
+      enLoc: location,
+      wage,
+      trust: 4,
+      urgent: Boolean(raw.urgent_hiring),
+      w: workers,
+    };
+  };
+
+  useEffect(() => {
+    const fetchJobs = async () => {
+      const token = localStorage.getItem("niyoga_token") || "";
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/jobs/`, {
+          headers: { Authorization: `Token ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (Array.isArray(data) && data.length) {
+          setJobs(data.map(mapBackendJob));
+        }
+      } catch (err) {
+        // keep fallback jobs if backend fetch fails
+      }
+    };
+    fetchJobs();
+  }, []);
+
   const cats = [
     { id: "all", l: isEn ? "All" : "అన్నీ", i: "🔍", en: "All" },
     { id: "farming", l: isEn ? "Farming" : "వ్యవసాయం", i: "🌾", en: "Farming" },
@@ -1257,6 +1298,38 @@ function Jobs({ langMode = "te" }) {
     { id: "driving", l: isEn ? "Driving" : "డ్రైవింగ్", i: "🚗", en: "Driving" },
   ];
   const filtered = filter === "all" ? jobs : jobs.filter(j => j.cat === filter);
+
+  const applyToJob = async jobId => {
+    if (applyingJobId || appliedJobs.includes(jobId)) return;
+    const token = localStorage.getItem("niyoga_token") || "";
+    setApplyingJobId(jobId);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/jobs/${jobId}/apply/`, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        show && show(data?.detail || data?.error || "Apply failed", "#ef4444");
+        return;
+      }
+      setAppliedJobs(prev => [...prev, jobId]);
+      show && show("Applied", "#22c55e");
+      if (langMode === "va") {
+        const job = jobs.find(j => j.id === jobId);
+        if (job) speak(isEn ? `${job.en} job applied for!` : `${job.te} పని కోసం దరఖాస్తు చేయబడింది!`);
+      }
+    } catch (err) {
+      show && show("Unable to apply. Try again.", "#ef4444");
+    } finally {
+      setApplyingJobId(null);
+    }
+  };
+
   console.log('[Jobs] filtering', { filter, filteredLength: filtered.length });
   const jobText = j => {
     const type = isEn ? j.en : j.te;
@@ -1309,7 +1382,16 @@ function Jobs({ langMode = "te" }) {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>{[...Array(5)].map((_, si) => <span key={si} style={{ fontSize: 13, color: si < j.trust ? "#ff8c00" : "#334155" }}>★</span>)}</div>
-            <button onClick={() => { if (langMode === "va") speak(isEn ? `${j.en} job applied for!` : `${j.te} పని కోసం దరఖాస్తు చేయబడింది!`); }} style={{ padding: "7px 16px", borderRadius: 50, border: "none", background: `linear-gradient(135deg,${j.color},${j.color}cc)`, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>{isEn ? "Apply →" : "Apply →"}</button>
+            {(() => {
+              const isApplied = appliedJobs.includes(j.id);
+              const isApplying = applyingJobId === j.id;
+              return <button
+                onClick={() => applyToJob(j.id)}
+                disabled={isApplying || isApplied}
+                style={{ padding: "7px 16px", borderRadius: 50, border: "none", background: `linear-gradient(135deg,${j.color},${j.color}cc)`, color: "#fff", fontWeight: 700, fontSize: 12, cursor: isApplying || isApplied ? "not-allowed" : "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
+                {isApplying ? "Applying..." : isApplied ? "Applied" : (isEn ? "Apply →" : "Apply →")}
+              </button>;
+            })()}
           </div>
         </div>)}
       </div>

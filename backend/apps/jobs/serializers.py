@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Job
+from .models import Job, JobApplication
 
 class JobSerializer(serializers.ModelSerializer):
     contractor_name = serializers.CharField(
@@ -65,3 +65,16 @@ class JobSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Phone number is required.")
         return value
+
+
+class JobApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JobApplication
+        fields = [
+            "id",
+            "job",
+            "worker",
+            "status",
+            "applied_at",
+        ]
+        read_only_fields = ["id", "status", "applied_at"]

@@ -1,4 +1,5 @@
 import logging
+from django.db import DatabaseError, IntegrityError
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -6,10 +7,66 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from apps.accounts.models import Profile, ContractorProfile
-from .models import Job
-from .serializers import JobSerializer
+from .models import Job, JobApplication
+from .serializers import JobSerializer, JobApplicationSerializer
 
 logger = logging.getLogger(__name__)
+
+
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def list_create_jobs(request):
+    """
+    GET: List all active jobs
+    POST: Create a new job (contractors only)
+    """
+    if request.method == 'GET':
+        jobs = Job.objects.filter(status='active').order_by('-created_at')
+        serializer = JobSerializer(jobs, many=True)
+        return Response(serializer.data)
+    
+    # POST - Create job (contractors only)
+    user = request.user
+    
+    # Get contractor profile from authenticated user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response(
+                {"error": "Only contractors can create jobs."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response(
+            {"error": "User profile not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except ContractorProfile.DoesNotExist:
+        return Response(
+            {"error": "Contractor profile not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Create job with contractor linked to authenticated user
+    job_data = request.data.copy()
+    job_data['contractor'] = contractor.id
+    
+    serializer = JobSerializer(data=job_data)
+    if serializer.is_valid():
+        serializer.save(contractor=contractor)
+        logger.info(
+            "Job created: id=%s contractor=%s job_type=%s location=%s",
+            serializer.instance.id,
+            contractor.id,
+            serializer.instance.job_type,
+            serializer.instance.location
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    else:
+        logger.warning("Job creation validation failed: errors=%s", serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
@@ -122,3 +179,84 @@ def job_detail(request, job_id):
     # DELETE
     job.delete()
     return Response({"message": "Job deleted successfully."}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def apply_job(request, job_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "worker":
+            return Response({"error": "Only workers can apply for jobs."}, status=status.HTTP_403_FORBIDDEN)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        job = Job.objects.get(id=job_id)
+    except Job.DoesNotExist:
+        return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        if JobApplication.objects.filter(job=job, worker=profile).exists():
+            return Response({"error": "You have already applied to this job."}, status=status.HTTP_400_BAD_REQUEST)
+    except DatabaseError:
+        logger.exception("Failed to check existing job application for job_id=%s worker_id=%s", job_id, profile.id)
+        return Response({"error": "Unable to verify application status."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        application = JobApplication.objects.create(job=job, worker=profile)
+    except IntegrityError:
+        return Response({"error": "You have already applied to this job."}, status=status.HTTP_400_BAD_REQUEST)
+    except DatabaseError:
+        logger.exception("Failed to create job application for job_id=%s worker_id=%s", job_id, profile.id)
+        return Response({"error": "Unable to apply to this job."}, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer = JobApplicationSerializer(application)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def my_applications(request):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "worker":
+            return Response({"error": "Only workers can view their applications."}, status=status.HTTP_403_FORBIDDEN)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    qs = JobApplication.objects.filter(worker=profile).order_by('-applied_at')
+    serializer = JobApplicationSerializer(qs, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def job_applications(request, job_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response({"error": "Only contractors can view job applications."}, status=status.HTTP_403_FORBIDDEN)
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    except ContractorProfile.DoesNotExist:
+        return Response({"error": "Contractor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        job = Job.objects.get(id=job_id)
+    except Job.DoesNotExist:
+        return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if job.contractor_id != contractor.id:
+        return Response({"error": "You do not have permission to view applications for this job."}, status=status.HTTP_403_FORBIDDEN)
+
+    qs = JobApplication.objects.filter(job=job).order_by('-applied_at')
+    serializer = JobApplicationSerializer(qs, many=True)
+    return Response(serializer.data)

@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import Job
+from .models import Job, JobApplication
+
 
 @admin.register(Job)
 class JobAdmin(admin.ModelAdmin):
@@ -21,3 +22,11 @@ class JobAdmin(admin.ModelAdmin):
             "fields": ("status", "created_at", "updated_at")
         }),
     )
+
+
+@admin.register(JobApplication)
+class JobApplicationAdmin(admin.ModelAdmin):
+    list_display = ("id", "worker", "job", "status", "applied_at")
+    list_filter = ("status", "applied_at")
+    search_fields = ("worker__phone", "job__job_type")
+    readonly_fields = ("applied_at",)

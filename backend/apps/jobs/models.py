@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from apps.accounts.models import ContractorProfile
+from apps.accounts.models import ContractorProfile, Profile
 
 class Job(models.Model):
     STATUS_CHOICES = [
@@ -38,3 +38,35 @@ class Job(models.Model):
     
     def __str__(self):
         return f"{self.job_type} - {self.location} ({self.get_status_display()})"
+
+class JobApplication(models.Model):
+    STATUS_CHOICES = [
+        ("applied", "Applied"),
+        ("shortlisted", "Shortlisted"),
+        ("rejected", "Rejected"),
+        ("hired", "Hired"),
+    ]
+
+    job = models.ForeignKey(
+        Job,
+        on_delete=models.CASCADE,
+        related_name="applications"
+    )
+    worker = models.ForeignKey(
+        Profile,
+        on_delete=models.CASCADE,
+        related_name="job_applications"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="applied"
+    )
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("job", "worker")
+        ordering = ["-applied_at"]
+
+    def __str__(self):
+        return f"Application {self.id} for {self.job.id} by {self.worker.phone}"
