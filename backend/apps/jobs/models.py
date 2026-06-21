@@ -44,6 +44,8 @@ class JobApplication(models.Model):
         ("applied", "Applied"),
         ("shortlisted", "Shortlisted"),
         ("accepted", "Accepted"),
+        ("confirmed", "Confirmed"),
+        ("unavailable", "Unavailable"),
         ("rejected", "Rejected"),
         ("hired", "Hired"),
     ]

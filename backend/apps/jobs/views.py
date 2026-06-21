@@ -330,3 +330,69 @@ def reject_application(request, application_id):
     application.save(update_fields=["status"])
     serializer = JobApplicationSerializer(application)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def confirm_application(request, application_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "worker":
+            return Response({"error": "Only workers can confirm applications."}, status=status.HTTP_403_FORBIDDEN)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        application = JobApplication.objects.select_related('job').get(id=application_id)
+    except JobApplication.DoesNotExist:
+        return Response({"error": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if application.worker_id != profile.id:
+        return Response({"error": "You do not have permission to manage this application."}, status=status.HTTP_403_FORBIDDEN)
+
+    if application.status == "confirmed":
+        return Response({"error": "Application is already confirmed."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status == "unavailable":
+        return Response({"error": "Cannot confirm an unavailable application."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status != "accepted":
+        return Response({"error": "Only accepted applications can be confirmed."}, status=status.HTTP_400_BAD_REQUEST)
+
+    application.status = "confirmed"
+    application.save(update_fields=["status"])
+    serializer = JobApplicationSerializer(application)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def mark_unavailable(request, application_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "worker":
+            return Response({"error": "Only workers can update application availability."}, status=status.HTTP_403_FORBIDDEN)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        application = JobApplication.objects.select_related('job').get(id=application_id)
+    except JobApplication.DoesNotExist:
+        return Response({"error": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if application.worker_id != profile.id:
+        return Response({"error": "You do not have permission to manage this application."}, status=status.HTTP_403_FORBIDDEN)
+
+    if application.status == "unavailable":
+        return Response({"error": "Application is already marked unavailable."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status == "confirmed":
+        return Response({"error": "Cannot mark a confirmed application unavailable."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status != "accepted":
+        return Response({"error": "Only accepted applications can be marked unavailable."}, status=status.HTTP_400_BAD_REQUEST)
+
+    application.status = "unavailable"
+    application.save(update_fields=["status"])
+    serializer = JobApplicationSerializer(application)
+    return Response(serializer.data)

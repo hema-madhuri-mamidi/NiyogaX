@@ -1421,6 +1421,7 @@ function WorkerApplications({ langMode = "te" }) {
   const isEn = langMode === "en";
   const [applications, setApplications] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [applicationActionLoading, setApplicationActionLoading] = useState(null);
   const { t, show } = useToast();
 
   const jobIconMap = {
@@ -1428,6 +1429,7 @@ function WorkerApplications({ langMode = "te" }) {
     construction: "🏗️",
     painting: "🎨",
     driving: "🚗",
+    driver: "🚗",
     electrician: "⚡",
     loading: "📦",
     mechanic: "🔧",
@@ -1436,8 +1438,47 @@ function WorkerApplications({ langMode = "te" }) {
   const getStatusBadge = (status) => {
     if (status === "applied") return { label: "🟠 Applied", bg: "#fef3c7", color: "#b45309" };
     if (status === "accepted") return { label: "🟢 Accepted", bg: "#dcfce7", color: "#166534" };
+    if (status === "confirmed") return { label: "✅ Confirmed", bg: "#d1fae5", color: "#065f46" };
+    if (status === "unavailable") return { label: "⚠️ Unavailable", bg: "#fef2f2", color: "#991b1b" };
     if (status === "rejected") return { label: "🔴 Rejected", bg: "#fee2e2", color: "#991b1b" };
     return { label: status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown", bg: "#e2e8f0", color: "#475569" };
+  };
+
+  const updateApplicationStatus = (applicationId, newStatus) => {
+    setApplications(current => current ? current.map(item => item.id === applicationId ? { ...item, status: newStatus } : item) : current);
+  };
+
+  const handleApplicationAction = async (applicationId, action) => {
+    if (applicationActionLoading) return;
+    const token = localStorage.getItem('niyoga_token') || "";
+    setApplicationActionLoading(applicationId);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/jobs/applications/${applicationId}/${action}/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const status = action === 'confirm' ? 'confirmed' : 'unavailable';
+        const statusLabel = action === 'confirm'
+          ? (isEn ? 'Confirmed' : 'నిర్ధారించబడింది')
+          : (isEn ? 'Marked unavailable' : 'ఉపలభ్యంకాదు అని గుర్తించబడింది');
+        updateApplicationStatus(applicationId, status);
+        show && show(statusLabel, '#22c55e');
+        if (langMode === 'va') {
+          speak(action === 'confirm'
+            ? (isEn ? 'Application confirmed.' : 'అప్లికేషన్ నిర్ధారించబడింది.')
+            : (isEn ? 'Application marked unavailable.' : 'అప్లికేషన్ అందుబాటులో లేదు అని గుర్తించబడింది.'));
+        }
+      } else {
+        show && show(data && (data.detail || data.error) ? (data.detail || data.error) : (isEn ? 'Unable to update application' : 'అప్లికేషన్‌ను నవీకరించలేము'), '#ef4444');
+      }
+    } catch (err) {
+      console.error('[WorkerApplications] application action failed', err);
+      show && show(isEn ? 'Network error' : 'నెట్‌వర్క్ లోపం', '#ef4444');
+    } finally {
+      setApplicationActionLoading(null);
+    }
   };
 
   useEffect(() => {
@@ -1505,6 +1546,25 @@ function WorkerApplications({ langMode = "te" }) {
                   <div>{isEn ? `Applied on ${new Date(app.applied_at).toLocaleDateString()}` : `అప్లై చేసిన తేదీ ${new Date(app.applied_at).toLocaleDateString()}`}</div>
                   <div>{isEn ? `Job status: ${app.job_status || '—'}` : `పని స్థితి: ${app.job_status || '—'}`}</div>
                 </div>
+                {app.status === 'confirmed' ? (
+                  <div style={{ marginTop: 16, background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.2)', borderRadius: 16, padding: 14, color: '#94a3b8', fontSize: 13 }}>
+                    <div style={{ color: '#f1f5f9', fontWeight: 700, marginBottom: 8 }}>{isEn ? 'Contractor Contact' : 'కాంట్రాక్టర్ సంప్రదింపు'}</div>
+                    {app.contractor_name ? <div style={{ marginBottom: 8 }}>{app.contractor_name}</div> : null}
+                    <div><strong style={{ color: '#f1f5f9' }}>{isEn ? 'Phone Number:' : 'ఫోన్ నంబర్:'}</strong> {app.contractor_phone || '—'}</div>
+                  </div>
+                ) : null}
+                {app.status === 'accepted' ? (
+                  <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <button onClick={() => handleApplicationAction(app.id, 'confirm')} disabled={applicationActionLoading === app.id}
+                      style={{ padding: '10px 12px', borderRadius: 14, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 700, cursor: applicationActionLoading === app.id ? 'not-allowed' : 'pointer' }}>
+                      {applicationActionLoading === app.id ? (isEn ? 'Processing…' : 'చేస్తోంది…') : (isEn ? 'Confirm Availability' : 'అందుబాటులో ఉన్నాను')}
+                    </button>
+                    <button onClick={() => handleApplicationAction(app.id, 'unavailable')} disabled={applicationActionLoading === app.id}
+                      style={{ padding: '10px 12px', borderRadius: 14, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: applicationActionLoading === app.id ? 'not-allowed' : 'pointer' }}>
+                      {applicationActionLoading === app.id ? (isEn ? 'Processing…' : 'చేస్తోంది…') : (isEn ? 'Not Available' : 'అందుబాటులో లేను')}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             );
           })}

@@ -70,6 +70,8 @@ class JobSerializer(serializers.ModelSerializer):
 class JobApplicationSerializer(serializers.ModelSerializer):
     worker_name = serializers.SerializerMethodField()
     worker_phone = serializers.SerializerMethodField()
+    contractor_name = serializers.SerializerMethodField()
+    contractor_phone = serializers.SerializerMethodField()
     job_type = serializers.SerializerMethodField()
     job_location = serializers.SerializerMethodField()
     daily_salary = serializers.SerializerMethodField()
@@ -83,6 +85,8 @@ class JobApplicationSerializer(serializers.ModelSerializer):
             "worker",
             "worker_name",
             "worker_phone",
+            "contractor_name",
+            "contractor_phone",
             "status",
             "applied_at",
             "job_type",
@@ -90,7 +94,7 @@ class JobApplicationSerializer(serializers.ModelSerializer):
             "daily_salary",
             "job_status",
         ]
-        read_only_fields = ["id", "status", "applied_at", "job_type", "job_location", "daily_salary", "job_status"]
+        read_only_fields = ["id", "status", "applied_at", "job_type", "job_location", "daily_salary", "job_status", "contractor_name", "contractor_phone"]
 
     def get_worker_name(self, obj):
         worker_profile = getattr(obj.worker, 'workerprofile', None)
@@ -107,6 +111,21 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 
     def get_daily_salary(self, obj):
         return str(getattr(obj.job, 'daily_salary', ""))
+
+    def get_contractor_name(self, obj):
+        contractor = getattr(obj.job, 'contractor', None)
+        if not contractor:
+            return ""
+        return getattr(contractor, 'name', None) or getattr(contractor, 'company_name', "")
+
+    def get_contractor_phone(self, obj):
+        if obj.status != "confirmed":
+            return None
+        contractor = getattr(obj.job, 'contractor', None)
+        if not contractor:
+            return None
+        profile = getattr(contractor, 'profile', None)
+        return getattr(profile, 'phone', None)
 
     def get_job_status(self, obj):
         return getattr(obj.job, 'status', "")
