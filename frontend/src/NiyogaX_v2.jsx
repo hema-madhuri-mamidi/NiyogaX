@@ -210,6 +210,7 @@ const T = {
     wProfileDone: "పూర్తి చేయండి ✓",
     wNavHome: "హోమ్",
     wNavJobs: "పనులు",
+    wNavApplications: "అప్లికేషన్స్",
     wNavProfile: "ప్రొఫైల్",
     // Reset
     resetSpeak: "మళ్లీ స్వాగతం!",
@@ -264,8 +265,8 @@ const T = {
     cDoneSpeak: "", resetSpeak: "", logout: "Log Out",
     wHomeWelcome: "Welcome!",
     wHomeBtn: "View Jobs →",
+    wNavApplications: "Applications",
     wProfileLoc: "📍 Location",
-    wProfileRating: "⭐ Rating",
     wProfileVerified: "✅ Verified",
     wProfileDaily: "💰 Daily wage",
     wProfileGender: "🧬 Gender",
@@ -622,6 +623,7 @@ function Nav({ page, go, role, langMode = "te" }) {
   const wn = [
     { id: "home", icon: "🏠", l: tx.wNavHome || "హోమ్" },
     { id: "jobs", icon: "🔍", l: tx.wNavJobs || "పనులు" },
+    { id: "applications", icon: "📄", l: tx.wNavApplications || "అప్లికేషన్స్" },
     { id: "profile", icon: "👤", l: tx.wNavProfile || "ప్రొఫైల్" },
   ];
   const cn = [
@@ -1411,6 +1413,103 @@ function Jobs({ langMode = "te" }) {
           </div>
         </div>)}
       </div>
+    </div>
+  </div>;
+}
+
+function WorkerApplications({ langMode = "te" }) {
+  const isEn = langMode === "en";
+  const [applications, setApplications] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { t, show } = useToast();
+
+  const jobIconMap = {
+    farming: "🌾",
+    construction: "🏗️",
+    painting: "🎨",
+    driving: "🚗",
+    electrician: "⚡",
+    loading: "📦",
+    mechanic: "🔧",
+  };
+  const getJobIcon = (type) => jobIconMap[(type || "").toString().toLowerCase().trim()] || "💼";
+  const getStatusBadge = (status) => {
+    if (status === "applied") return { label: "🟠 Applied", bg: "#fef3c7", color: "#b45309" };
+    if (status === "accepted") return { label: "🟢 Accepted", bg: "#dcfce7", color: "#166534" };
+    if (status === "rejected") return { label: "🔴 Rejected", bg: "#fee2e2", color: "#991b1b" };
+    return { label: status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown", bg: "#e2e8f0", color: "#475569" };
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const token = localStorage.getItem('niyoga_token') || "";
+    fetch(`${BACKEND_URL}/api/jobs/applications/my/`, {
+      headers: { Authorization: `Token ${token}` }
+    })
+      .then(async res => {
+        const data = await res.json().catch(() => null);
+        if (!mounted) return;
+        if (res.ok && Array.isArray(data)) {
+          setApplications(data);
+        } else {
+          setApplications([]);
+          show && show(data && (data.detail || data.error) ? (data.detail || data.error) : (isEn ? 'Failed to load applications' : 'అప్లికేషన్స్‌ని లోడ్ చేయలేకపోయాము'), '#ef4444');
+        }
+      })
+      .catch(err => {
+        console.error('[WorkerApplications] fetch failed', err);
+        if (!mounted) return;
+        setApplications([]);
+        show && show(isEn ? 'Network error' : 'నెట్‌వర్క్ లోపం', '#ef4444');
+      })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [isEn, show]);
+
+  return <div style={{ minHeight: '100vh', padding: '36px 18px 120px', position: 'relative', zIndex: 2 }}>
+    <Toast {...t} />
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 14 }}>
+        <div>
+          <h1 style={{ color: '#f1f5f9', fontFamily: "'Rajdhani',sans-serif", fontSize: 'clamp(20px,5vw,34px)', fontWeight: 800, margin: 0 }}>{isEn ? 'My Applications' : 'నా అప్లికేషన్స్'}</h1>
+          <p style={{ color: '#94a3b8', fontFamily: "'Noto Sans Telugu',sans-serif", fontSize: 13, marginTop: 4 }}>{isEn ? 'Track your job status here' : 'మీ అనువర్తన స్థితిని ఇక్కడ చూడండి'}</p>
+        </div>
+      </div>
+      {loading ? (
+        <div style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>{isEn ? 'Loading applications…' : 'అప్లికేషన్స్‌ని లోడ్ చేస్తున్నాం…'}</div>
+      ) : !applications || applications.length === 0 ? (
+        <div style={{ minHeight: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#94a3b8' }}>
+          <div>{isEn ? 'No applications yet' : 'ఇంకా అప్లికేషన్స్ లేవు'}</div>
+          <button onClick={() => window.location.reload()} style={{ padding: '10px 18px', borderRadius: 14, border: 'none', background: '#ff8c00', color: '#fff', cursor: 'pointer' }}>{isEn ? 'Refresh' : 'పునఃసమీకరించు'}</button>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 18 }}>
+          {applications.map(app => {
+            const title = app.job_type || 'Job';
+            const location = app.job_location || 'Unknown Location';
+            const wage = app.daily_salary != null ? `₹${app.daily_salary}/day` : 'Not specified';
+            const badge = getStatusBadge(app.status);
+            return (
+              <div key={app.id} style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,140,0,.15)', borderRadius: 20, padding: 18, position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 }}>
+                  <div style={{ fontSize: 42, lineHeight: 1 }}>{getJobIcon(app.job_type)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#f1f5f9', fontWeight: 800, fontSize: 18, lineHeight: 1.2, marginBottom: 6 }}>{title}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 13 }}>{location}</div>
+                  </div>
+                  <span style={{ background: badge.bg, color: badge.color, borderRadius: 999, padding: '6px 12px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{badge.label}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, color: '#94a3b8', fontSize: 13 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📍</span>{location}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>💰</span>{wage}</div>
+                  <div>{isEn ? `Applied on ${new Date(app.applied_at).toLocaleDateString()}` : `అప్లై చేసిన తేదీ ${new Date(app.applied_at).toLocaleDateString()}`}</div>
+                  <div>{isEn ? `Job status: ${app.job_status || '—'}` : `పని స్థితి: ${app.job_status || '—'}`}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   </div>;
 }
@@ -2914,7 +3013,7 @@ export default function NiyogaX() {
 
     // WORKER page guard — only show worker pages to workers
     // CONTRACTOR page guard — only show contractor pages to contractors
-    const workerOnlyPages = ["jobs", "home", "profile"];
+    const workerOnlyPages = ["jobs", "home", "profile", "applications"];
     const contractorOnlyPages = ["home", "dashboard", "post", "workers", "profile"];
 
     if (["/jobs", "/", "/dashboard", "/profile", "/post-job"].includes(path)) {
@@ -3078,6 +3177,7 @@ export default function NiyogaX() {
 
       {/* Worker main */}
       {screen === "main" && role === "worker" && page === "jobs"    && <Jobs langMode={wLangMode} />}
+      {screen === "main" && role === "worker" && page === "applications" && <WorkerApplications langMode={wLangMode} />}
       {screen === "main" && role === "worker" && page === "home"    && <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 2, position: "relative", textAlign: "center", padding: 40 }}>
         <div style={{ fontSize: 72, marginBottom: 20 }}>👋</div>
         <h2 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: 30, fontWeight: 800 }}>{wTx.wHomeWelcome}</h2>
@@ -3178,6 +3278,7 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
   const [applicantJob, setApplicantJob] = useState(null);
   const [applicants, setApplicants] = useState(null);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
+  const [applicationActionLoading, setApplicationActionLoading] = useState(null);
   const { t, show } = useToast();
 
   useEffect(() => {
@@ -3200,6 +3301,36 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
     setApplicantJob(null);
     setApplicants(null);
     setApplicantsLoading(false);
+    setApplicationActionLoading(null);
+  };
+
+  const updateApplicantStatus = (applicationId, newStatus) => {
+    setApplicants(current => current ? current.map(item => item.id === applicationId ? { ...item, status: newStatus } : item) : current);
+  };
+
+  const handleApplicantDecision = async (applicationId, decision) => {
+    if (applicationActionLoading) return;
+    const token = localStorage.getItem('niyoga_token') || "";
+    setApplicationActionLoading(applicationId);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/jobs/applications/${applicationId}/${decision}/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const statusLabel = decision === 'accept' ? (isEn ? 'Accepted' : 'అంగీకరించబడింది') : (isEn ? 'Rejected' : 'నిరాకరించబడింది');
+        updateApplicantStatus(applicationId, decision === 'accept' ? 'accepted' : 'rejected');
+        show && show(statusLabel, '#22c55e');
+      } else {
+        show && show(data && (data.detail || data.error) ? (data.detail || data.error) : (isEn ? 'Unable to update application' : 'అప్లికేషన్‌ను నవీకరించలేము'), '#ef4444');
+      }
+    } catch (err) {
+      console.error('[MyJobs] applicant decision failed', err);
+      show && show(isEn ? 'Network error' : 'నెట్‌వర్క్ లోపం', '#ef4444');
+    } finally {
+      setApplicationActionLoading(null);
+    }
   };
 
   const openApplicants = async job => {
@@ -3306,6 +3437,26 @@ function MyJobs({ langMode = "te", onBack, onEdit }) {
                   </div>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginBottom: 6 }}>{a.worker_phone || '-'}</div>
                   <div style={{ color: '#94a3b8', fontSize: 13 }}><strong style={{ color: '#f1f5f9' }}>{isEn ? 'Status:' : 'స్థితి:'}</strong> {a.status || '-'}</div>
+                  {a.status === 'applied' ? (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      <button onClick={() => handleApplicantDecision(a.id, 'accept')} disabled={applicationActionLoading === a.id}
+                        style={{ flex: 1, padding: '9px 12px', borderRadius: 12, border: 'none', background: '#22c55e', color: '#fff', fontWeight: 700, cursor: applicationActionLoading === a.id ? 'not-allowed' : 'pointer' }}>
+                        {applicationActionLoading === a.id ? (isEn ? 'Processing…' : 'చేస్తోంది…') : (isEn ? 'Accept' : 'అంగీకరించు')}
+                      </button>
+                      <button onClick={() => handleApplicantDecision(a.id, 'reject')} disabled={applicationActionLoading === a.id}
+                        style={{ flex: 1, padding: '9px 12px', borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: applicationActionLoading === a.id ? 'not-allowed' : 'pointer' }}>
+                        {applicationActionLoading === a.id ? (isEn ? 'Processing…' : 'చేస్తోంది…') : (isEn ? 'Reject' : 'నిరాకరించు')}
+                      </button>
+                    </div>
+                  ) : a.status === 'accepted' ? (
+                    <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8, color: '#22c55e', fontWeight: 700, fontSize: 13 }}>
+                      <span style={{ background: '#dcfce7', borderRadius: 12, padding: '5px 10px', color: '#166534' }}>{isEn ? 'Accepted' : 'అంగీకరించబడింది'}</span>
+                    </div>
+                  ) : a.status === 'rejected' ? (
+                    <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8, color: '#ef4444', fontWeight: 700, fontSize: 13 }}>
+                      <span style={{ background: '#fee2e2', borderRadius: 12, padding: '5px 10px', color: '#b91c1c' }}>{isEn ? 'Rejected' : 'నిరాకరించబడింది'}</span>
+                    </div>
+                  ) : null}
                 </div>
               ))
             ) : (

@@ -43,6 +43,7 @@ class JobApplication(models.Model):
     STATUS_CHOICES = [
         ("applied", "Applied"),
         ("shortlisted", "Shortlisted"),
+        ("accepted", "Accepted"),
         ("rejected", "Rejected"),
         ("hired", "Hired"),
     ]

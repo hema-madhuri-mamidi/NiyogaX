@@ -260,3 +260,73 @@ def job_applications(request, job_id):
     qs = JobApplication.objects.filter(job=job).order_by('-applied_at')
     serializer = JobApplicationSerializer(qs, many=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def accept_application(request, application_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response({"error": "Only contractors can accept applications."}, status=status.HTTP_403_FORBIDDEN)
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    except ContractorProfile.DoesNotExist:
+        return Response({"error": "Contractor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        application = JobApplication.objects.select_related('job').get(id=application_id)
+    except JobApplication.DoesNotExist:
+        return Response({"error": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if application.job.contractor_id != contractor.id:
+        return Response({"error": "You do not have permission to manage this application."}, status=status.HTTP_403_FORBIDDEN)
+
+    if application.status == "accepted":
+        return Response({"error": "Application is already accepted."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status == "rejected":
+        return Response({"error": "Cannot accept a rejected application."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status == "hired":
+        return Response({"error": "Cannot modify a hired application."}, status=status.HTTP_400_BAD_REQUEST)
+
+    application.status = "accepted"
+    application.save(update_fields=["status"])
+    serializer = JobApplicationSerializer(application)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def reject_application(request, application_id):
+    user = request.user
+    try:
+        profile = Profile.objects.get(user=user)
+        if profile.role != "contractor":
+            return Response({"error": "Only contractors can reject applications."}, status=status.HTTP_403_FORBIDDEN)
+        contractor = ContractorProfile.objects.get(profile=profile)
+    except Profile.DoesNotExist:
+        return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    except ContractorProfile.DoesNotExist:
+        return Response({"error": "Contractor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        application = JobApplication.objects.select_related('job').get(id=application_id)
+    except JobApplication.DoesNotExist:
+        return Response({"error": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if application.job.contractor_id != contractor.id:
+        return Response({"error": "You do not have permission to manage this application."}, status=status.HTTP_403_FORBIDDEN)
+
+    if application.status == "rejected":
+        return Response({"error": "Application is already rejected."}, status=status.HTTP_400_BAD_REQUEST)
+    if application.status == "hired":
+        return Response({"error": "Cannot modify a hired application."}, status=status.HTTP_400_BAD_REQUEST)
+
+    application.status = "rejected"
+    application.save(update_fields=["status"])
+    serializer = JobApplicationSerializer(application)
+    return Response(serializer.data)
