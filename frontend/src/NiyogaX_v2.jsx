@@ -1227,6 +1227,7 @@ function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
 /* ── JOB BOARD (with SpeakerButton + category icons) ── */
 function Jobs({ langMode = "te" }) {
   const isEn = langMode === "en";
+  const { jobFilter } = useJobFilter();
   const [filter, setFilter] = useState("all");
   const [applyingJobId, setApplyingJobId] = useState(null);
   const [appliedJobs, setAppliedJobs] = useState([]);
@@ -1235,18 +1236,30 @@ function Jobs({ langMode = "te" }) {
     { id: 2, icon: "🏗️", cat: "construction", te: "నిర్మాణం", en: "Construction", loc: "సికింద్రాబాద్ – 5 km", enLoc: "Secunderabad – 5 km", wage: "₹650/day", trust: 4, urgent: false, w: 15, color: "#ff8c00" },
     { id: 3, icon: "🎨", cat: "painting", te: "పెయింటింగ్", en: "Painting", loc: "కూకట్‌పల్లి – 7 km", enLoc: "Kukatpally – 7 km", wage: "₹550/day", trust: 5, urgent: false, w: 4, color: "#3b82f6" },
     { id: 4, icon: "🚗", cat: "driving", te: "డ్రైవింగ్", en: "Driving", loc: "మాదాపూర్ – 2 km", enLoc: "Madapur – 2 km", wage: "₹700/day", trust: 4, urgent: true, w: 2, color: "#8b5cf6" },
-    { id: 5, icon: "🔧", cat: "mechanic", te: "మెకానిక్", en: "Mechanic", loc: "అమీర్‌పేట్ – 6 km", enLoc: "Ameerpet – 6 km", wage: "₹600/day", trust: 5, urgent: false, w: 3, color: "#ef4444" },
-    { id: 6, icon: "🧹", cat: "cleaning", te: "శుభ్రత", en: "Cleaning", loc: "జూబ్లీ హిల్స్ – 4 km", enLoc: "Jubilee Hills – 4 km", wage: "₹400/day", trust: 4, urgent: false, w: 6, color: "#06b6d4" },
+    { id: 5, icon: "📦", cat: "loading", te: "లోడింగ్", en: "Loading", loc: "నగరం లోడ్ సైట్", enLoc: "City loading site", wage: "₹450/day", trust: 4, urgent: false, w: 5, color: "#06b6d4" },
+    { id: 6, icon: "⚡", cat: "electrician", te: "ఎలక్ట్రీషియన్", en: "Electrician", loc: "బంజారాహిల్స్ – 4 km", enLoc: "Banjara Hills – 4 km", wage: "₹700/day", trust: 4, urgent: false, w: 4, color: "#fbbf24" },
+    { id: 7, icon: "🔧", cat: "mechanic", te: "మెకానిక్", en: "Mechanic", loc: "అమీర్‌పేట్ – 6 km", enLoc: "Ameerpet – 6 km", wage: "₹600/day", trust: 5, urgent: false, w: 3, color: "#ef4444" },
+    { id: 8, icon: "🧹", cat: "cleaning", te: "శుభ్రత", en: "Cleaning", loc: "జూబ్లీ హిల్స్ – 4 km", enLoc: "Jubilee Hills – 4 km", wage: "₹400/day", trust: 4, urgent: false, w: 6, color: "#06b6d4" },
   ]);
   const { t, show } = useToast();
 
+  useEffect(() => {
+    if (jobFilter !== undefined && jobFilter !== null) {
+      setFilter(jobFilter || "all");
+    }
+  }, [jobFilter]);
+
   const mapBackendJob = raw => {
-    const normalizedType = String(raw.job_type || "").toLowerCase();
+    const normalizedType = String(raw.job_type || "").toLowerCase().trim();
     const typeMap = {
       farming: { icon: "🌾", color: "#22c55e", en: "Farming", te: "వ్యవసాయం", cat: "farming" },
       construction: { icon: "🏗️", color: "#ff8c00", en: "Construction", te: "నిర్మాణం", cat: "construction" },
       painting: { icon: "🎨", color: "#3b82f6", en: "Painting", te: "పెయింటింగ్", cat: "painting" },
       driving: { icon: "🚗", color: "#8b5cf6", en: "Driving", te: "డ్రైవింగ్", cat: "driving" },
+      driver: { icon: "🚗", color: "#8b5cf6", en: "Driving", te: "డ్రైవింగ్", cat: "driving" },
+      loading: { icon: "📦", color: "#06b6d4", en: "Loading", te: "లోడింగ్", cat: "loading" },
+      electrician: { icon: "⚡", color: "#fbbf24", en: "Electrician", te: "ఎలక్ట్రీషియన్", cat: "electrician" },
+      mechanic: { icon: "🔧", color: "#ef4444", en: "Mechanic", te: "మెకానిక్", cat: "mechanic" },
     };
     const match = Object.keys(typeMap).find(key => normalizedType.includes(key));
     const meta = match ? typeMap[match] : { icon: "💼", color: "#64748b", en: raw.job_type || "Job", te: raw.job_type || "పని", cat: "all" };
@@ -1296,6 +1309,9 @@ function Jobs({ langMode = "te" }) {
     { id: "construction", l: isEn ? "Construction" : "నిర్మాణం", i: "🏗️", en: "Construction" },
     { id: "painting", l: isEn ? "Painting" : "పెయింటింగ్", i: "🎨", en: "Painting" },
     { id: "driving", l: isEn ? "Driving" : "డ్రైవింగ్", i: "🚗", en: "Driving" },
+    { id: "loading", l: isEn ? "Loading" : "లోడింగ్", i: "📦", en: "Loading" },
+    { id: "electrician", l: isEn ? "Electrician" : "ఎలక్ట్రీషియన్", i: "⚡", en: "Electrician" },
+    { id: "mechanic", l: isEn ? "Mechanic" : "మెకానిక్", i: "🔧", en: "Mechanic" },
   ];
   const filtered = filter === "all" ? jobs : jobs.filter(j => j.cat === filter);
 
@@ -2035,6 +2051,7 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
     { id: "electrician",  icon: "⚡", t: langMode === "en" ? "Electrician"  : "ఎలక్ట్రీషియన్", color: "#fbbf24" },
     { id: "driver",       icon: "🚗", t: langMode === "en" ? "Driver"       : "డ్రైవింగ్",  color: "#8b5cf6" },
     { id: "loading",      icon: "📦", t: langMode === "en" ? "Loading"      : "లోడింగ్",    color: "#06b6d4" },
+    { id: "mechanic",     icon: "🔧", t: langMode === "en" ? "Mechanic"     : "మెకానిక్",   color: "#ef4444" },
   ];
   useEffect(() => { if (va && tx.pjSpeaks[step]) speakLater(tx.pjSpeaks[step], 300); }, [step]);
   const prog = ((step - 1) / 5) * 100;

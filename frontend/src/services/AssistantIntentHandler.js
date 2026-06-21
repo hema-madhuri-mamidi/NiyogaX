@@ -35,8 +35,12 @@ function detectAction(text) {
     };
   }
 
-  // 3. Action: Show driving jobs (only when user explicitly asks to browse jobs)
-  if (isExplicitJobBrowseFor('driving') || isExplicitJobBrowseForTel('డ్రైవింగ్')) {
+  // 3. Action: Show driving/driver jobs (only when user explicitly asks to browse jobs)
+  if (
+    isExplicitJobBrowseFor('driving') ||
+    isExplicitJobBrowseFor('driver') ||
+    isExplicitJobBrowseForTel('డ్రైవింగ్')
+  ) {
     return {
       type: 'action',
       action: { type: 'navigate_jobs', filter: 'driving' },
@@ -115,6 +119,20 @@ function detectAction(text) {
       reply: 'మెకానిక్ పనులను చూపిస్తున్నాను.'
     };
   }
+  if (isExplicitJobBrowseFor('loading') || isExplicitJobBrowseForTel('లోడింగ్')) {
+    return {
+      type: 'action',
+      action: { type: 'navigate_jobs', filter: 'loading' },
+      reply: 'లోడింగ్ పనులను చూపిస్తున్నాను.'
+    };
+  }
+  if (isExplicitJobBrowseFor('electrician') || isExplicitJobBrowseFor('electrical') || isExplicitJobBrowseForTel('ఎలక్ట్రికల్') || isExplicitJobBrowseForTel('ఎలక్ట్రీషియన్')) {
+    return {
+      type: 'action',
+      action: { type: 'navigate_jobs', filter: 'electrician' },
+      reply: 'ఎలక్ట్రిషియన్ పనులను చూపిస్తున్నాను.'
+    };
+  }
   if (isExplicitJobBrowseFor('cleaning') || isExplicitJobBrowseForTel('క్లీనింగ్')) {
     return {
       type: 'action',
@@ -122,18 +140,11 @@ function detectAction(text) {
       reply: 'క్లీనింగ్ పనులను చూపిస్తున్నాను.'
     };
   }
-  if (isExplicitJobBrowseFor('plumbing') || isExplicitJobBrowseForTel('ప్లంబింగ్')) {
+  if (isExplicitJobBrowseFor('plumbing') || isExplicitJobBrowseForTel('ప్లంబിംഗ്')) {
     return {
       type: 'action',
       action: { type: 'navigate_jobs', filter: 'plumbing' },
       reply: 'ప్లంబింగ్ పనులను చూపిస్తున్నాను.'
-    };
-  }
-  if (isExplicitJobBrowseFor('electrical') || isExplicitJobBrowseForTel('ఎలక్ట్రికల్')) {
-    return {
-      type: 'action',
-      action: { type: 'navigate_jobs', filter: 'electrical' },
-      reply: 'ఎలక్ట్రికల్ పనులను 보여ిస్తున్నాను.'
     };
   }
 
