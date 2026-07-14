@@ -32,6 +32,9 @@ class WorkerProfile(models.Model):
     work = models.CharField(max_length=100)
 
     location = models.CharField(max_length=255)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    district = models.CharField(max_length=100, blank=True, null=True)
+    area = models.CharField(max_length=100, blank=True, null=True)
 
     work_experience = models.IntegerField(default=0)
 
@@ -55,6 +58,9 @@ class ContractorProfile(models.Model):
     workers_needed = models.IntegerField()
 
     location = models.CharField(max_length=255)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    district = models.CharField(max_length=100, blank=True, null=True)
+    area = models.CharField(max_length=100, blank=True, null=True)
 
     gst_number = models.CharField(
         max_length=20,

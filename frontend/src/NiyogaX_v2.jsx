@@ -947,6 +947,9 @@ function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
     { id: "name",     te: "మీ పేరు ఏమిటి?",          en: "Your name?",          icon: "👤", type: "text"   },
     { id: "age",      te: "మీ వయసు ఎంత?",             en: "Age?",                icon: "🎂", type: "number" },
     { id: "location", te: "మీరు ఎక్కడ ఉన్నారు?",      en: "Location?",           icon: "📍", type: "text"   },
+    { id: "state",    te: "మీ రాష్ట్రం ఏమిటి?",       en: "State?",              icon: "🗺️", type: "text"   },
+    { id: "district", te: "మీ జిల్లా ఏమిటి?",       en: "District?",           icon: "🏘️", type: "text"   },
+    { id: "area",     te: "మీ ప్రాంతం లేదా గ్రామం ఏమిటి?", en: "Area / Village?", icon: "🏡", type: "text"   },
     { id: "workType", te: "మీకు ఏ పని వస్తుంది?",     en: "Work type?",          icon: "🔨", type: "text"   },
     { id: "exp",      te: "ఎంత అనుభవం ఉంది?",        en: "Years experience?",   icon: "⭐", type: "number" },
     { id: "wage",     te: "రోజు కూలి ఎంత కావాలి?",   en: "Daily wage (₹)?",    icon: "💰", type: "number" },
@@ -1013,6 +1016,9 @@ function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
           age: ans.age,
           workType: ans.workType,
           location: ans.location,
+          state: ans.state,
+          district: ans.district,
+          area: ans.area,
           exp: ans.exp,
           wage: ans.wage,
           gender,
@@ -1041,13 +1047,13 @@ function WorkerProfile({ langMode = "te", phone, onDone, onBack }) {
   // ── TOTAL STEPS for progress bar ─────────────────────────────────
   // core(6) + gender(1) + emContact(0-2 depending on gender) = 7 or 9
   const isFemale = gender === "female";
-  const totalSteps = isFemale ? 9 : 8; // 6 core + gender + optional 2 EC
+  const totalSteps = isFemale ? 11 : 10; // 9 core + gender + optional 2 EC
   const currentStepNum =
     phase === "core"       ? cur + 1 :
-    phase === "gender"     ? 7 :
-    phase === "emContact"  ? 8 :
-    phase === "emPhone"    ? 9 :
-    phase === "emOptional" ? 8 :
+    phase === "gender"     ? 10 :
+    phase === "emContact"  ? 11 :
+    phase === "emPhone"    ? 12 :
+    phase === "emOptional" ? 10 :
     totalSteps;
   const prog = ((currentStepNum - 1) / totalSteps) * 100;
 
@@ -1724,6 +1730,9 @@ function CProfile({ phone, onDone, onBack, langMode = "te" }) {
     { id: "name",     te: "మీ పేరు ఏమిటి?",                en: "Your name?",              icon: "👤", type: "text"   },
     { id: "company",  te: "మీ కంపెనీ పేరు?",               en: "Company name?",            icon: "🏢", type: "text"   },
     { id: "location", te: "మీరు ఎక్కడ ఉన్నారు?",           en: "Location?",                icon: "📍", type: "text"   },
+    { id: "state",    te: "మీ రాష్ట్రం ఏమిటి?",            en: "State?",                   icon: "🗺️", type: "text"   },
+    { id: "district", te: "మీ జిల్లా ఏమిటి?",            en: "District?",                icon: "🏘️", type: "text"   },
+    { id: "area",     te: "మీ ప్రాంతం లేదా గ్రామం ఏమిటి?",  en: "Area / Village?",          icon: "🏡", type: "text"   },
     { id: "workType", te: "ఏ రకమైన పని ఇస్తారు?",          en: "Work type?",               icon: "🔨", type: "text"   },
     { id: "workers",  te: "ఎంత మంది కార్మికులు కావాలి?",   en: "Workers needed?",          icon: "👷", type: "number" },
     { id: "budget",   te: "రోజు వేతన బడ్జెట్ ఎంత?",       en: "Daily wage budget (₹)?",   icon: "💰", type: "number" },
@@ -1769,6 +1778,9 @@ function CProfile({ phone, onDone, onBack, langMode = "te" }) {
           name: profileData.name,
           company: profileData.company,
           location: profileData.location,
+          state: profileData.state,
+          district: profileData.district,
+          area: profileData.area,
           workType: profileData.workType,
           workers: profileData.workers,
           budget: profileData.budget,
@@ -1814,7 +1826,7 @@ function CProfile({ phone, onDone, onBack, langMode = "te" }) {
         <div style={{ color: "#64748b", fontSize: 13 }}>{qSub}</div>
       </div>
       <div style={{ display: "flex", gap: 10, marginBottom: 7 }}>
-        <input type={q.type} value={val} onChange={e => setVal(e.target.value)} placeholder={q.en}
+        <input type={q.type} value={val} onChange={e => setVal(e.target.value)} placeholder={qLabel}
           style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
           onFocus={e => e.target.style.borderColor = "#22c55e"} onBlur={e => e.target.style.borderColor = "rgba(34,197,94,.3)"} />
         <Mic onResult={handleMic} size={46} color="#22c55e" />
@@ -1826,6 +1838,9 @@ function CProfile({ phone, onDone, onBack, langMode = "te" }) {
         name: ans.name,
         company: ans.company,
         location: ans.location,
+        state: ans.state,
+        district: ans.district,
+        area: ans.area,
         workType: ans.workType,
         workers: ans.workers,
         budget: ans.budget,
