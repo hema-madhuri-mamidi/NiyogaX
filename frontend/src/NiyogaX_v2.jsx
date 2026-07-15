@@ -1239,6 +1239,7 @@ function Jobs({ langMode = "te" }) {
   const [filter, setFilter] = useState("all");
   const [applyingJobId, setApplyingJobId] = useState(null);
   const [appliedJobs, setAppliedJobs] = useState([]);
+  const [workerLocation, setWorkerLocation] = useState({ state: "", district: "", area: "" });
   const [jobs, setJobs] = useState([
     { id: 1, icon: "🌾", cat: "farming", te: "వ్యవసాయం", en: "Farming", loc: "హైదరాబాద్ – 3 km", enLoc: "Hyderabad – 3 km", wage: "₹500/day", trust: 5, urgent: true, w: 8, color: "#22c55e" },
     { id: 2, icon: "🏗️", cat: "construction", te: "నిర్మాణం", en: "Construction", loc: "సికింద్రాబాద్ – 5 km", enLoc: "Secunderabad – 5 km", wage: "₹650/day", trust: 4, urgent: false, w: 15, color: "#ff8c00" },
@@ -1272,7 +1273,8 @@ function Jobs({ langMode = "te" }) {
     const match = Object.keys(typeMap).find(key => normalizedType.includes(key));
     const meta = match ? typeMap[match] : { icon: "💼", color: "#64748b", en: raw.job_type || "Job", te: raw.job_type || "పని", cat: "all" };
 
-    const location = raw.location || "Unknown location";
+    const locationParts = [raw.area, raw.district, raw.state].filter(Boolean);
+    const location = raw.location ? (locationParts.length ? `${locationParts.join(" • ")} • ${raw.location}` : raw.location) : (locationParts.join(" • ") || "Unknown location");
     const wage = raw.daily_salary != null ? `₹${raw.daily_salary}/day` : "₹500/day";
     const workers = Number(raw.workers_needed) || 1;
 
@@ -1289,8 +1291,37 @@ function Jobs({ langMode = "te" }) {
       trust: 4,
       urgent: Boolean(raw.urgent_hiring),
       w: workers,
+      state: raw.state || "",
+      district: raw.district || "",
+      area: raw.area || "",
     };
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem("niyoga_token") || "";
+    const fetchWorkerProfile = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/accounts/profile/`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Token ${token}`
+          }
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.success && data?.profile) {
+          setWorkerLocation({
+            state: data.profile.state || "",
+            district: data.profile.district || "",
+            area: data.profile.area || ""
+          });
+        }
+      } catch (err) {
+        // ignore profile fetch failures and fall back to showing all jobs
+      }
+    };
+    fetchWorkerProfile();
+  }, []);
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -1301,15 +1332,34 @@ function Jobs({ langMode = "te" }) {
         });
         if (!res.ok) return;
         const data = await res.json().catch(() => null);
-        if (Array.isArray(data) && data.length) {
-          setJobs(data.map(mapBackendJob));
+        if (Array.isArray(data)) {
+          const sortedJobs = (data.length ? data : []).map(mapBackendJob).sort((a, b) => {
+            const workerArea = (workerLocation.area || "").trim().toLowerCase();
+            const workerDistrict = (workerLocation.district || "").trim().toLowerCase();
+            const workerState = (workerLocation.state || "").trim().toLowerCase();
+            const aArea = (a.area || "").trim().toLowerCase();
+            const aDistrict = (a.district || "").trim().toLowerCase();
+            const aState = (a.state || "").trim().toLowerCase();
+            const bArea = (b.area || "").trim().toLowerCase();
+            const bDistrict = (b.district || "").trim().toLowerCase();
+            const bState = (b.state || "").trim().toLowerCase();
+
+            if (!workerArea && !workerDistrict && !workerState) return 0;
+
+            const aPriority = aArea && workerArea && aArea === workerArea ? 3 : aDistrict && workerDistrict && aDistrict === workerDistrict ? 2 : aState && workerState && aState === workerState ? 1 : 0;
+            const bPriority = bArea && workerArea && bArea === workerArea ? 3 : bDistrict && workerDistrict && bDistrict === workerDistrict ? 2 : bState && workerState && bState === workerState ? 1 : 0;
+
+            if (aPriority !== bPriority) return bPriority - aPriority;
+            return 0;
+          });
+          setJobs(sortedJobs);
         }
       } catch (err) {
         // keep fallback jobs if backend fetch fails
       }
     };
     fetchJobs();
-  }, []);
+  }, [workerLocation.state, workerLocation.district, workerLocation.area]);
 
   const cats = [
     { id: "all", l: isEn ? "All" : "అన్నీ", i: "🔍", en: "All" },
@@ -2203,9 +2253,12 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
     try { const s = localStorage.getItem('niyoga_edit_job'); const parsed = s ? JSON.parse(s) : null; console.log("[POSTJOB] editInitial =", parsed); console.log("[POSTJOB] editInitial.id =", parsed?.id); return parsed; } catch(e) { console.error(e); return null; }
   })();
   const [editJobId] = useState(editInitial?.id || null);
-  const defaultState = { type: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false };
+  const defaultState = { type: "", state: "", district: "", area: "", loc: "", salary: "", workers: "", days: "", timing: "", phone: "", urgent: false };
   const mapped = editInitial ? {
     type: editInitial.job_type || "",
+    state: editInitial.state || "",
+    district: editInitial.district || "",
+    area: editInitial.area || "",
     loc: editInitial.location || "",
     salary: editInitial.daily_salary || "",
     workers: editInitial.workers_needed || "",
@@ -2260,19 +2313,37 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
   if (step === 2) return <div style={{ minHeight: "100vh", padding: "60px 18px 40px", position: "relative", zIndex: 2 }}>
     <Back onClick={() => setStep(1)} />
     <div style={{ maxWidth: 520, margin: "0 auto" }}>
-      <H t="Location చెప్పండి" s="Work site location" />
+      <H t="Location వివరాలు చెప్పండి" s="Work site structured location" />
       <div style={{ background: "rgba(34,197,94,.06)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 16, height: 160, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, flexDirection: "column", gap: 8 }}>
         <span style={{ fontSize: 36, animation: "bounce 2s infinite" }}>📍</span>
         <span style={{ color: "#22c55e", fontSize: 13, fontWeight: 700, fontFamily: "'Rajdhani',sans-serif" }}>Live Location Active</span>
       </div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <input value={d.loc} onChange={e => setD(x => ({ ...x, loc: e.target.value }))} placeholder="నగరం / జిల్లా"
-          style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
-          onFocus={e => e.target.style.borderColor = "#22c55e"} onBlur={e => e.target.style.borderColor = "rgba(34,197,94,.3)"} />
-        <Mic onResult={t => setD(x => ({ ...x, loc: t }))} size={46} color="#22c55e" />
+      <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
+        {[
+          { key: "state", label: langMode === "en" ? "State" : "రాష్ట్రం", placeholder: langMode === "en" ? "Telangana" : "తెలంగాణ" },
+          { key: "district", label: langMode === "en" ? "District" : "జిల్లా", placeholder: langMode === "en" ? "Hyderabad" : "హైదరాబాద్" },
+          { key: "area", label: langMode === "en" ? "Area / Village" : "ప్రాంతం / గ్రామం", placeholder: langMode === "en" ? "Madhapur" : "మాదాపూర్" },
+        ].map(f => <div key={f.key}>
+          <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 7 }}>{f.label}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input value={d[f.key]} onChange={e => setD(x => ({ ...x, [f.key]: e.target.value }))} placeholder={f.placeholder}
+              style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
+              onFocus={e => e.target.style.borderColor = "#22c55e"} onBlur={e => e.target.style.borderColor = "rgba(34,197,94,.3)"} />
+            <Mic onResult={t => setD(x => ({ ...x, [f.key]: t }))} size={46} color="#22c55e" />
+          </div>
+        </div>)}
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 12, fontFamily: "'Noto Sans Telugu',sans-serif", marginBottom: 7 }}>{langMode === "en" ? "Landmark / Full Address" : "ల్యాండ్ మార్క్ / పూర్తి చిరునామా"}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input value={d.loc} onChange={e => setD(x => ({ ...x, loc: e.target.value }))} placeholder={langMode === "en" ? "Near bus stand / full address" : "బస్సు స్టాండ్ సమీపం / పూర్తి చిరునామా"}
+              style={{ flex: 1, padding: "13px 16px", background: "rgba(255,255,255,.07)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 13, color: "#f1f5f9", fontSize: 15, outline: "none", fontFamily: "'Noto Sans Telugu',sans-serif" }}
+              onFocus={e => e.target.style.borderColor = "#22c55e"} onBlur={e => e.target.style.borderColor = "rgba(34,197,94,.3)"} />
+            <Mic onResult={t => setD(x => ({ ...x, loc: t }))} size={46} color="#22c55e" />
+          </div>
+        </div>
       </div>
-      <button onClick={() => setD(x => ({ ...x, loc: x.loc || "హైదరాబాద్" }))} style={{ width: "100%", padding: "11px", borderRadius: 12, border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.08)", color: "#22c55e", fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", marginBottom: 14 }}>📍 లైవ్ లొకేషన్ వాడండి</button>
-      <Btn onClick={() => setStep(3)} color="#22c55e" disabled={!d.loc}>తదుపరి →</Btn>
+      <button onClick={() => setD(x => ({ ...x, state: x.state || "తెలంగాణ", district: x.district || "హైదరాబాద్", area: x.area || "మాదాపూర్", loc: x.loc || "బస్సు స్టాండ్ సమీపం" }))} style={{ width: "100%", padding: "11px", borderRadius: 12, border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.08)", color: "#22c55e", fontWeight: 700, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif", marginBottom: 14 }}>📍 లైవ్ లొకేషన్ వాడండి</button>
+      <Btn onClick={() => setStep(3)} color="#22c55e" disabled={!d.state || !d.district || !d.area || !d.loc}>తదుపరి →</Btn>
     </div>
   </div>;
 
@@ -2353,6 +2424,9 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
         const payload = {
           job_type: d.type,
           location: d.loc,
+          state: d.state,
+          district: d.district,
+          area: d.area,
           daily_salary: Number(d.salary || 0),
           workers_needed: Number(d.workers || 0),
           days_of_work: Number(d.days || 0),
@@ -2363,7 +2437,7 @@ function PostJob({ onBack, onDone, langMode = "te", initialData }) {
 
         // Simple client-side validation
         if (!payload.job_type) { show && show("Please select a job type", "#ef4444"); return; }
-        if (!payload.location) { show && show("Please enter a location", "#ef4444"); return; }
+        if (!payload.state || !payload.district || !payload.area || !payload.location) { show && show("Please enter state, district, area and landmark address", "#ef4444"); return; }
         if (!payload.daily_salary || payload.daily_salary <= 0) { show && show("Please enter a valid daily salary", "#ef4444"); return; }
         if (!payload.workers_needed || payload.workers_needed <= 0) { show && show("Please enter number of workers needed", "#ef4444"); return; }
         if (!payload.days_of_work || payload.days_of_work <= 0) { show && show("Please enter number of days", "#ef4444"); return; }

@@ -23,6 +23,18 @@ def list_create_jobs(request):
     """
     if request.method == 'GET':
         jobs = Job.objects.filter(status='active').order_by('-created_at')
+
+        state = request.query_params.get('state', '').strip()
+        district = request.query_params.get('district', '').strip()
+        area = request.query_params.get('area', '').strip()
+
+        if state:
+            jobs = jobs.filter(state__iexact=state)
+        if district:
+            jobs = jobs.filter(district__iexact=district)
+        if area:
+            jobs = jobs.filter(area__iexact=area)
+
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
     

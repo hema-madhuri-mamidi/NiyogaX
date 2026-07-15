@@ -16,7 +16,10 @@ class Job(models.Model):
     )
     
     job_type = models.CharField(max_length=100)
-    location = models.CharField(max_length=255)
+    location = models.CharField(max_length=255, blank=True, default="")
+    state = models.CharField(max_length=100, blank=True, default="")
+    district = models.CharField(max_length=100, blank=True, default="")
+    area = models.CharField(max_length=100, blank=True, default="")
     daily_salary = models.DecimalField(max_digits=10, decimal_places=2)
     workers_needed = models.IntegerField()
     days_of_work = models.IntegerField()
