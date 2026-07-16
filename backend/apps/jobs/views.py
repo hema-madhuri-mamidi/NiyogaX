@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-
+import os
 import firebase_admin
 from firebase_admin import credentials, messaging
 from django.db import DatabaseError, IntegrityError
@@ -16,8 +16,13 @@ from .serializers import JobSerializer, JobApplicationSerializer
 
 logger = logging.getLogger(__name__)
 
-FIREBASE_CREDENTIALS_PATH = Path(__file__).resolve().parents[2] / "firebase_key.json"
-
+# FIREBASE_CREDENTIALS_PATH = Path(__file__).resolve().parents[2] / "firebase_key.json"
+FIREBASE_CREDENTIALS_PATH = Path(
+    os.getenv(
+        "FIREBASE_CREDENTIALS_PATH",
+        str(Path(__file__).resolve().parents[2] / "firebase_key.json"),
+    )
+)
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate(str(FIREBASE_CREDENTIALS_PATH))
