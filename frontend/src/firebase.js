@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
+import voiceService from "./services/VoiceService";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCfLCGhA-cv1Fn2UINr_GSBMEbTbictKkM",
@@ -49,6 +50,27 @@ const saveFcmTokenToBackend = async (token) => {
   }
 };
 
+const getStoredLanguage = () => {
+  if (typeof window === "undefined") {
+    return "te";
+  }
+
+  const savedLang = localStorage.getItem("niyoga_lang") || "te";
+  return savedLang === "en" ? "en" : "te";
+};
+
+const speakJobAccepted = (lang) => {
+  const text = lang === "en"
+    ? "Congratulations! Your job has been accepted."
+    : "🎉 మీ పని ఆమోదించబడింది!";
+
+  try {
+    voiceService.speak(text, { lang: lang === "en" ? "en-IN" : "te-IN" });
+  } catch (error) {
+    console.error("Failed to speak job acceptance notification:", error);
+  }
+};
+
 export const initializeFirebaseMessaging = async () => {
   if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
     console.warn("Firebase Messaging is not supported in this browser environment.");
@@ -94,6 +116,11 @@ if (typeof window !== "undefined") {
         badge: "/badge-72x72.png",
         data: payload.data || {},
       };
+
+      const messageType = payload.data?.type || payload?.data?.messageType || "";
+      if (messageType === "job_accepted") {
+        speakJobAccepted(getStoredLanguage());
+      }
       
       if (Notification.permission === "granted") {
         new Notification(notificationTitle, notificationOptions);
