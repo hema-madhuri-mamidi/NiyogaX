@@ -25,13 +25,27 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_jp)adv902%)mf8m9r2xawr(k1+@liirepxjbcxgnol6wwk%rt'
+# SECRET_KEY = 'django-insecure-_jp)adv902%)mf8m9r2xawr(k1+@liirepxjbcxgnol6wwk%rt'
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-_jp)adv902%)mf8m9r2xawr(k1+@liirepxjbcxgnol6wwk%rt"
+)
 
+DEBUG = os.getenv("DEBUG", "True") == "True"
+
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    ".onrender.com",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.onrender.com",
+]
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG = True
 USE_TEST_OTP = False
 
-ALLOWED_HOSTS = []
+# ALLOWED_HOSTS = []
 
 
 # Application definition
