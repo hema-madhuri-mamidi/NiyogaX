@@ -43,6 +43,7 @@ class WorkerProfile(models.Model):
     gender = models.CharField(max_length=10)
 
     emergency_contact = models.CharField(max_length=15)
+    fcm_token = models.CharField(max_length=255, blank=True, null=True)
     
 class ContractorProfile(models.Model):
     profile = models.OneToOneField(Profile, on_delete=models.CASCADE)

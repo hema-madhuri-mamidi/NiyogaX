@@ -1561,7 +1561,7 @@ function WorkerApplications({ langMode = "te" }) {
       })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
-  }, [isEn, show]);
+  }, [isEn]);
 
   return <div style={{ minHeight: '100vh', padding: '36px 18px 120px', position: 'relative', zIndex: 2 }}>
     <Toast {...t} />
@@ -2140,13 +2140,64 @@ function CDash({ profile = {}, onPost, onWorkers, langMode = "te" }) {
   const va = langMode === "va";
   const [emer, setEmer] = useState(false);
   const [emerPopup, setEmerPopup] = useState(false);
+  const [stats, setStats] = useState([
+    { icon: "👷", label: tx.dashStatActive, val: 0, color: "#22c55e" },
+    { icon: "📋", label: tx.dashStatJobs,   val: 0, color: "#ff8c00" },
+    { icon: "✅", label: tx.dashStatDone,   val: 0, color: "#3b82f6" },
+    { icon: "⭐", label: tx.dashStatRating, val: "0", color: "#fbbf24" },
+  ]);
+  const [nearby, setNearby] = useState([]);
+  const [loading, setLoading] = useState(true);
   useEffect(() => { if (va) speakLater(tx.dashWelcomeSpeak, 400); }, []);
-  const stats = [
-    { icon: "👷", label: tx.dashStatActive, val: 23, color: "#22c55e" },
-    { icon: "📋", label: tx.dashStatJobs,   val: 4,  color: "#ff8c00" },
-    { icon: "✅", label: tx.dashStatDone,   val: 127, color: "#3b82f6" },
-    { icon: "⭐", label: tx.dashStatRating, val: "4.8", color: "#fbbf24" },
-  ];
+  useEffect(() => {
+    const token = localStorage.getItem("niyoga_token") || "";
+    const loadDashboard = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/jobs/dashboard/`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Token ${token}`,
+          },
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data) {
+          setStats([
+            { icon: "👷", label: tx.dashStatActive, val: 0, color: "#22c55e" },
+            { icon: "📋", label: tx.dashStatJobs,   val: 0, color: "#ff8c00" },
+            { icon: "✅", label: tx.dashStatDone,   val: 0, color: "#3b82f6" },
+            { icon: "⭐", label: tx.dashStatRating, val: "0", color: "#fbbf24" },
+          ]);
+          setNearby([]);
+          return;
+        }
+        const dashboardStats = data.stats || {};
+        setStats([
+          { icon: "👷", label: tx.dashStatActive, val: Number(dashboardStats.active_jobs || 0), color: "#22c55e" },
+          { icon: "📋", label: tx.dashStatJobs,   val: Number(dashboardStats.total_jobs_posted || 0), color: "#ff8c00" },
+          { icon: "✅", label: tx.dashStatDone,   val: Number(dashboardStats.total_workers_hired || dashboardStats.total_applications_received || 0), color: "#3b82f6" },
+          { icon: "⭐", label: tx.dashStatRating, val: String(dashboardStats.total_applications_received || 0), color: "#fbbf24" },
+        ]);
+        setNearby((data.nearby_workers || []).map((worker) => ({
+          id: worker.id,
+          name: worker.name,
+          skill: worker.work_type || "",
+          dist: worker.area || "",
+          trust: 5,
+          avail: true,
+          g: "M",
+          area: worker.area || "",
+          experience: worker.experience,
+          wage: worker.wage,
+          contactNumber: worker.contact_number,
+        })));
+      } catch (err) {
+        console.error("[CDash] failed to load dashboard data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboard();
+  }, [tx.dashStatActive, tx.dashStatJobs, tx.dashStatDone, tx.dashStatRating, va]);
   const actions = [
     { icon: "➕", label: tx.dashActPost,    color: "#22c55e", fn: onPost },
     { icon: "👷", label: tx.dashActWorkers, color: "#ff8c00", fn: onWorkers },
@@ -2154,12 +2205,6 @@ function CDash({ profile = {}, onPost, onWorkers, langMode = "te" }) {
     { icon: "📊", label: tx.dashActAttend,  color: "#3b82f6", fn: () => { if (va) speak(tx.dashAttendSpeak); } },
     { icon: "🔔", label: tx.dashActNotify,  color: "#8b5cf6", fn: () => { if (va) speak(tx.dashNotifySpeak); } },
     { icon: "⭐", label: tx.dashActRating,  color: "#fbbf24", fn: () => { if (va) speak(tx.dashRatingSpeak); } },
-  ];
-  const nearby = [
-    { name: "రవి కుమార్",  skill: "నిర్మాణం",   dist: "1.2 km", trust: 5, avail: true,  g: "M" },
-    { name: "లక్ష్మి దేవి", skill: "వ్యవసాయం",  dist: "2.4 km", trust: 4, avail: true,  g: "F" },
-    { name: "సురేష్ బాబు", skill: "పెయింటింగ్", dist: "3.1 km", trust: 5, avail: false, g: "M" },
-    { name: "ప్రియా శ్రీ",  skill: "Electrician",dist: "1.8 km", trust: 5, avail: true,  g: "F" },
   ];
   return <div style={{ minHeight: "100vh", padding: "22px 18px 100px", position: "relative", zIndex: 2 }}>
 
@@ -2222,23 +2267,29 @@ function CDash({ profile = {}, onPost, onWorkers, langMode = "te" }) {
       </div>
 
       <h2 style={{ color: "#f1f5f9", fontFamily: "'Rajdhani',sans-serif", fontSize: 18, fontWeight: 800, marginBottom: 14 }}>{tx.dashNearby}</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 13 }}>
-        {nearby.map((w, i) => <div key={w.name} style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${w.avail ? "rgba(34,197,94,.3)" : "rgba(255,255,255,.1)"}`, borderRadius: 14, padding: "14px", animation: `slideUp .4s ${i*.07}s both` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
-            <div style={{ width: 42, height: 42, borderRadius: "50%", background: `linear-gradient(135deg,${w.g === "F" ? "#ec4899,#f472b6" : "#ff8c00,#ffa500"})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{w.g === "F" ? "👩" : "👷"}</div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-              <div style={{ width: 9, height: 9, borderRadius: "50%", background: w.avail ? "#22c55e" : "#64748b", boxShadow: w.avail ? "0 0 8px #22c55e" : "none" }} />
-              {w.g === "F" && <span style={{ background: "rgba(236,72,153,.15)", border: "1px solid rgba(236,72,153,.3)", borderRadius: 50, padding: "1px 7px", color: "#f472b6", fontSize: 9, fontWeight: 700 }}>🛡️ SAFE</span>}
+      {loading ? (
+        <div style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif" }}>Loading nearby workers…</div>
+      ) : nearby.length === 0 ? (
+        <div style={{ color: "#94a3b8", fontSize: 13, fontFamily: "'Noto Sans Telugu',sans-serif" }}>No nearby workers found.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 13 }}>
+          {nearby.map((w, i) => <div key={w.id || w.name} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(34,197,94,.3)", borderRadius: 14, padding: "14px", animation: `slideUp .4s ${i*.07}s both` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
+              <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg,#ff8c00,#ffa500)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>👷</div>
+              <div style={{ width: 9, height: 9, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
             </div>
-          </div>
-          <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 14, fontFamily: "'Rajdhani',sans-serif" }}>{w.name}</div>
-          <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 2 }}>{w.skill} • {w.dist}</div>
-          <div style={{ display: "flex", gap: 1, marginTop: 6 }}>{[...Array(5)].map((_, si) => <span key={si} style={{ fontSize: 11, color: si < w.trust ? "#ff8c00" : "#334155" }}>★</span>)}</div>
-          <button onClick={() => { if (va) speak(tx.dashCallSpeak(w.name)); }} style={{ marginTop: 10, width: "100%", padding: "7px", borderRadius: 8, border: "none", background: w.avail ? "linear-gradient(135deg,#22c55e,#16a34a)" : "rgba(255,255,255,.07)", color: w.avail ? "#fff" : "#475569", fontWeight: 700, fontSize: 11, cursor: w.avail ? "pointer" : "not-allowed", fontFamily: "'Rajdhani',sans-serif" }}>
-            {w.avail ? tx.dashCall : tx.dashUnavail}
-          </button>
-        </div>)}
-      </div>
+            <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 14, fontFamily: "'Rajdhani',sans-serif" }}>{w.name}</div>
+            <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 2 }}>{w.skill || "—"}</div>
+            <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 4 }}>Area: {w.area || "—"}</div>
+            <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 2 }}>Exp: {w.experience ?? "—"} yrs</div>
+            <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 2 }}>Wage: ₹{w.wage || "—"}</div>
+            <div style={{ color: "#94a3b8", fontSize: 11, fontFamily: "'Noto Sans Telugu',sans-serif", marginTop: 2 }}>Contact: {w.contactNumber || "—"}</div>
+            <button onClick={() => { if (va) speak(tx.dashCallSpeak(w.name)); }} style={{ marginTop: 10, width: "100%", padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "#fff", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: "'Rajdhani',sans-serif" }}>
+              {tx.dashCall}
+            </button>
+          </div>)}
+        </div>
+      )}
     </div>
   </div>;
 }

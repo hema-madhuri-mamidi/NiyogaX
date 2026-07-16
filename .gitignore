@@ -30,3 +30,4 @@ dist-ssr
 *.sw?
 desktop.ini
 Thumbs.db
+backend/firebase_key.json

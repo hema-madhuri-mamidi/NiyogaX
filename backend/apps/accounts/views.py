@@ -310,6 +310,27 @@ def get_worker_profile(request):
     })
 
 
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def save_fcm_token(request):
+    token_value = request.data.get("token")
+    if not token_value:
+        return Response({"error": "Token is required"}, status=400)
+
+    profile = Profile.objects.filter(user=request.user).first()
+    if not profile or profile.role != "worker":
+        return Response({"error": "Only workers can save FCM tokens"}, status=403)
+
+    worker_profile = WorkerProfile.objects.filter(profile=profile).first()
+    if not worker_profile:
+        return Response({"error": "Worker profile not found"}, status=404)
+
+    worker_profile.fcm_token = token_value
+    worker_profile.save(update_fields=["fcm_token"])
+    return Response({"message": "FCM token saved"})
+
+
 @api_view(["GET"])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
